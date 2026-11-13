@@ -19,4 +19,3 @@ pub enum IndexError {
 }
 
 pub type Result<T> = std::result::Result<T, IndexError>;
-

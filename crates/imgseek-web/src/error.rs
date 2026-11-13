@@ -22,4 +22,3 @@ pub enum WebError {
 }
 
 pub type Result<T> = std::result::Result<T, WebError>;
-

@@ -19,4 +19,3 @@ pub enum ChromeError {
 }
 
 pub type Result<T> = std::result::Result<T, ChromeError>;
-

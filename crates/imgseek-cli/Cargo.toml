@@ -10,4 +10,5 @@ path = "src/main.rs"
 
 [dependencies]
 imgseek-core = { path = "../imgseek-core" }
-
+clap = { workspace = true }
+anyhow = { workspace = true }

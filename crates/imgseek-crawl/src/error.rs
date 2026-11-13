@@ -22,4 +22,3 @@ pub enum CrawlError {
 }
 
 pub type Result<T> = std::result::Result<T, CrawlError>;
-
