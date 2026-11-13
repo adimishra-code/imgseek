@@ -9,4 +9,4 @@ imgseek-core = { path = "../imgseek-core" }
 imgseek-store = { path = "../imgseek-store" }
 imgseek-index = { path = "../imgseek-index" }
 imgseek-features = { path = "../imgseek-features" }
-
+thiserror = { workspace = true }

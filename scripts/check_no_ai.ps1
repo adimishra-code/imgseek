@@ -37,3 +37,4 @@ if ($foundFiles -ne 0) {
 }
 
 Write-Host "No-AI check passed: 0 ML crates, 0 model files."
+

@@ -56,3 +56,4 @@ if compgen -G "python/requirements*.txt" > /dev/null; then
 fi
 
 echo "No-AI check passed: 0 ML crates, 0 model files, 0 forbidden Python dependencies."
+
