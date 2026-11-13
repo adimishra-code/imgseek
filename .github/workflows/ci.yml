@@ -29,3 +29,11 @@ jobs:
 
       - name: Run tests
         run: cargo test --workspace
+
+      - name: Check No-AI dependencies
+        shell: bash
+        run: bash scripts/check_no_ai.sh
+
+      - name: Check Query Isolation
+        shell: bash
+        run: bash scripts/check_query_isolation.sh

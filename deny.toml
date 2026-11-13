@@ -1,0 +1,43 @@
+# cargo-deny configuration for imgseek
+# Enforces the No-AI Contract and crate licensing policies
+
+[bans]
+multiple-versions = "warn"
+deny = [
+    { name = "tch" },
+    { name = "torch-sys" },
+    { name = "ort" },
+    { name = "onnxruntime" },
+    { name = "onnxruntime-sys" },
+    { name = "tract-core" },
+    { name = "tract-onnx" },
+    { name = "candle-core" },
+    { name = "candle-nn" },
+    { name = "burn" },
+    { name = "burn-core" },
+    { name = "tensorflow" },
+    { name = "tensorflow-sys" },
+    { name = "tflite" },
+    { name = "dfdx" },
+    { name = "rust-bert" },
+    { name = "llm" },
+    { name = "openvino" },
+    { name = "openvino-sys" },
+    { name = "mxnet" },
+]
+
+[licenses]
+unlicensed = "deny"
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "CC0-1.0",
+    "Unicode-DFS-2016",
+    "Unicode-3.0",
+    "OpenSSL",
+    "Zlib",
+]
+confidence-threshold = 0.8
