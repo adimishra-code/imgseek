@@ -1,0 +1,13 @@
+[package]
+name = "imgseek"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "imgseek"
+path = "src/main.rs"
+
+[dependencies]
+imgseek-core = { path = "../imgseek-core" }
+

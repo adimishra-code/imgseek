@@ -1,0 +1,11 @@
+[package]
+name = "imgseek-web"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+imgseek-core = { path = "../imgseek-core" }
+imgseek-store = { path = "../imgseek-store" }
+imgseek-query = { path = "../imgseek-query" }
+

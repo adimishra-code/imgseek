@@ -35,3 +35,4 @@ All state is stored locally under `.imgseek/`:
 - `meta.db`: SQLite database storing document IDs, sighting metadata, and provenance.
 - `blobs/`: Content-addressed storage (SHA-256) of indexed images.
 - `index/`: Custom binary segment files and multi-index hash tables.
+
