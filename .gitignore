@@ -1,0 +1,17 @@
+target/
+.imgseek/
+*.log
+datasets/
+*.orig
+*.bak
+Cargo.lock.bak
+python/__pycache__/
+python/*.egg-info/
+python/.venv/
+python/venv/
+.env
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+.cursorrules
+*.prompt
