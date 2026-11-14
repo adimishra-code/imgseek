@@ -8,6 +8,12 @@ pub enum EvalError {
     #[error("query error: {0}")]
     Query(#[from] imgseek_query::QueryError),
 
+    #[error("index error: {0}")]
+    Index(#[from] imgseek_index::IndexError),
+
+    #[error("store error: {0}")]
+    Store(#[from] imgseek_store::StoreError),
+
     #[error("dataset not found: {0}")]
     DatasetNotFound(String),
 

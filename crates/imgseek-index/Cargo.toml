@@ -14,3 +14,8 @@ memmap2 = { workspace = true }
 
 [dev-dependencies]
 proptest = { workspace = true }
+
+[[bench]]
+name = "scale_bench"
+harness = false
+

@@ -3,6 +3,7 @@ pub mod compression;
 pub mod error;
 pub mod manifest;
 pub mod mih;
+pub mod occupancy;
 pub mod segment;
 pub mod verify;
 
@@ -18,6 +19,7 @@ pub use mih::{
     sphere_masks, CandidateHit, HashAlgoId, MihChunkTable, MihChunkTableView, MihEnsembleIndex,
     MihFamilyIndex, BUCKET_COUNT, BUCKET_ENTRY_SIZE, CHUNK_DIRECTORY_SIZE, TOTAL_BALL_MASKS_R3,
 };
+pub use occupancy::{analyze_index_segment, ChunkTableOccupancy, OccupancyReport};
 pub use segment::{
     ChunkTableDescriptor, DataSegmentReader, DataSegmentWriter, DocumentRecord, IndexSegmentReader,
     IndexSegmentWriter, SegmentFooter, SegmentHeader, DATA_MAGIC, FOOTER_LEN, FOOTER_MAGIC,

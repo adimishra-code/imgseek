@@ -506,8 +506,14 @@ dependencies = [
 name = "imgseek-eval"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "clap",
  "imgseek-core",
+ "imgseek-index",
  "imgseek-query",
+ "imgseek-store",
+ "serde",
+ "serde_json",
  "thiserror",
 ]
 
