@@ -1,13 +1,9 @@
 #!/usr/bin/env python3
-"""
-Generates deterministic synthetic test fixtures and golden hash vectors for Layer A and Layer B tests.
-Enforces 100% determinism with a fixed PRNG seed.
-"""
-
 import json
 import os
 import numpy as np
 import scipy.fftpack
+import scipy.ndimage
 import pywt
 import imagehash
 from PIL import Image, ImageDraw
@@ -16,7 +12,6 @@ SEED = 1337
 NUM_IMAGES = 200
 
 def hash_to_u64(bool_matrix):
-    """Converts an 8x8 boolean matrix to a u64 integer where (0,0) is MSB."""
     flat = bool_matrix.flatten()
     val = 0
     for bit in flat:
@@ -29,12 +24,10 @@ def compute_layer_a_ahash(matrix_8x8):
     return hash_to_u64(diff)
 
 def compute_layer_a_dhash(matrix_9x8):
-    # matrix is 8 rows, 9 cols
     diff = matrix_9x8[:, 1:] > matrix_9x8[:, :-1]
     return hash_to_u64(diff)
 
 def compute_layer_a_phash(matrix_32x32):
-    # 2D DCT-II unnormalized (scipy default matches imagehash)
     dct = scipy.fftpack.dct(scipy.fftpack.dct(matrix_32x32.astype(float), axis=0), axis=1)
     dct_8x8 = dct[:8, :8]
     med = float(np.median(dct_8x8))
@@ -43,16 +36,14 @@ def compute_layer_a_phash(matrix_32x32):
 
 def compute_layer_a_whash(matrix_64x64):
     pixels = matrix_64x64.astype(float)
-    ll_max_level = int(np.log2(64))  # 6
-    level = int(np.log2(8))          # 3
-    dwt_level = ll_max_level - level  # 3
+    ll_max_level = int(np.log2(64))
+    level = int(np.log2(8))
+    dwt_level = ll_max_level - level
 
-    # Remove global LL (level 6)
     coeffs = pywt.wavedec2(pixels, 'haar', level=ll_max_level)
     coeffs[0] = np.zeros_like(coeffs[0])
     reconstructed = pywt.waverec2(coeffs, 'haar')
 
-    # Decompose to 3 levels -> LL3 is 8x8
     coeffs_3 = pywt.wavedec2(reconstructed, 'haar', level=dwt_level)
     ll3 = coeffs_3[0]
     med = float(np.median(ll3))
@@ -61,90 +52,29 @@ def compute_layer_a_whash(matrix_64x64):
 
 def generate_synthetic_image(idx, rng, size=(128, 128)):
     w, h = size
-    mode_type = idx % 8
+    base = rng.uniform(40, 215, (h, w, 3))
+    base = scipy.ndimage.gaussian_filter(base, sigma=(rng.uniform(1.5, 3.5), rng.uniform(1.5, 3.5), 0))
 
-    if mode_type == 0:
-        # Linear gradient
-        angle = rng.uniform(0, 2 * np.pi)
-        x = np.linspace(-1, 1, w)
-        y = np.linspace(-1, 1, h)
-        xx, yy = np.meshgrid(x, y)
-        grad = xx * np.cos(angle) + yy * np.sin(angle)
-        grad = ((grad - grad.min()) / (grad.max() - grad.min() + 1e-6) * 255).astype(np.uint8)
-        arr = np.stack([grad, np.roll(grad, 20, axis=0), np.roll(grad, 40, axis=1)], axis=-1)
-        return Image.fromarray(arr, 'RGB')
+    x = np.linspace(-2, 2, w)
+    y = np.linspace(-2, 2, h)
+    xx, yy = np.meshgrid(x, y)
+    freq1, freq2 = rng.uniform(1, 4), rng.uniform(1, 4)
+    pattern = np.sin(xx * freq1 + yy * freq2) * 35.0 + np.cos(xx * freq2 - yy * freq1) * 25.0
+    base = np.clip(base + pattern[..., None], 0, 255).astype(np.uint8)
 
-    elif mode_type == 1:
-        # Radial gradient / concentric rings
-        x = np.linspace(-2, 2, w)
-        y = np.linspace(-2, 2, h)
-        xx, yy = np.meshgrid(x, y)
-        r = np.sqrt(xx**2 + yy**2)
-        rings = np.sin(r * rng.uniform(5, 20))
-        rings = ((rings + 1) * 127.5).astype(np.uint8)
-        arr = np.stack([rings, 255 - rings, np.roll(rings, 30, axis=0)], axis=-1)
-        return Image.fromarray(arr, 'RGB')
-
-    elif mode_type == 2:
-        # Geometric shapes (rectangles, ellipses)
-        img = Image.new('RGB', (w, h), color=(int(rng.integers(0, 255)), int(rng.integers(0, 255)), int(rng.integers(0, 255))))
-        draw = ImageDraw.Draw(img)
-        for _ in range(5):
-            x0, y0 = rng.integers(0, w - 20), rng.integers(0, h - 20)
-            x1, y1 = x0 + rng.integers(10, 50), y0 + rng.integers(10, 50)
-            col = (int(rng.integers(0, 255)), int(rng.integers(0, 255)), int(rng.integers(0, 255)))
-            if rng.random() > 0.5:
-                draw.rectangle([x0, y0, x1, y1], fill=col)
-            else:
-                draw.ellipse([x0, y0, x1, y1], fill=col)
-        return img
-
-    elif mode_type == 3:
-        # Checkerboard / grid
-        tile_size = int(rng.choice([4, 8, 16, 32]))
-        grid = np.indices((h, w)).sum(axis=0) // tile_size % 2
-        c1 = rng.integers(0, 256, size=3)
-        c2 = rng.integers(0, 256, size=3)
-        arr = np.where(grid[..., None] == 1, c1, c2).astype(np.uint8)
-        return Image.fromarray(arr, 'RGB')
-
-    elif mode_type == 4:
-        # Gaussian smoothed noise
-        noise = rng.normal(128, 50, (h, w, 3)).clip(0, 255).astype(np.uint8)
-        return Image.fromarray(noise, 'RGB')
-
-    elif mode_type == 5:
-        # Stripes / bars
-        freq = rng.uniform(2, 10)
-        axis = int(rng.choice([0, 1]))
-        t = np.linspace(0, freq * 2 * np.pi, w if axis == 1 else h)
-        bar = ((np.sin(t) + 1) * 127.5).astype(np.uint8)
-        if axis == 1:
-            arr = np.tile(bar, (h, 1))
+    im = Image.fromarray(base, 'RGB')
+    draw = ImageDraw.Draw(im)
+    for _ in range(rng.integers(2, 5)):
+        x0, y0 = rng.integers(10, w - 40), rng.integers(10, h - 40)
+        x1, y1 = x0 + rng.integers(15, 35), y0 + rng.integers(15, 35)
+        col = tuple(rng.integers(20, 230, size=3).tolist())
+        if rng.random() > 0.5:
+            draw.rectangle([x0, y0, x1, y1], outline=col, width=2)
         else:
-            arr = np.tile(bar[:, None], (1, w))
-        c = rng.integers(50, 200, size=3)
-        rgb = np.stack([arr * c[0] // 255, arr * c[1] // 255, arr * c[2] // 255], axis=-1).astype(np.uint8)
-        return Image.fromarray(rgb, 'RGB')
+            draw.ellipse([x0, y0, x1, y1], outline=col, width=2)
 
-    elif mode_type == 6:
-        # High contrast synthetic scene with borders
-        img = Image.new('RGB', (w, h), color=(255, 255, 255))
-        draw = ImageDraw.Draw(img)
-        draw.line([0, 0, w, h], fill=(0, 0, 0), width=3)
-        draw.line([0, h, w, 0], fill=(255, 0, 0), width=3)
-        draw.rectangle([w // 4, h // 4, 3 * w // 4, 3 * h // 4], outline=(0, 128, 0), width=4, fill=(200, 200, 200))
-        return img
-
-    else:
-        # Multi-frequency sinusoid texture
-        x = np.linspace(0, 10, w)
-        y = np.linspace(0, 10, h)
-        xx, yy = np.meshgrid(x, y)
-        z = np.sin(xx * 2) + np.cos(yy * 3) + np.sin(xx + yy)
-        z = ((z - z.min()) / (z.max() - z.min()) * 255).astype(np.uint8)
-        arr = np.stack([z, np.rot90(z), 255 - z], axis=-1)
-        return Image.fromarray(arr, 'RGB')
+    arr = scipy.ndimage.gaussian_filter(np.array(im, dtype=float), sigma=(0.8, 0.8, 0))
+    return Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8), 'RGB')
 
 def main():
     rng = np.random.default_rng(SEED)
@@ -161,20 +91,17 @@ def main():
         img_path = os.path.join(synthetic_img_dir, img_filename)
         img.save(img_path)
 
-        # Full-image PIL hashes (Layer B oracles)
         b_ahash = int(str(imagehash.average_hash(img, 8)), 16)
         b_dhash = int(str(imagehash.dhash(img, 8)), 16)
         b_phash = int(str(imagehash.phash(img, 8, 4)), 16)
         b_whash = int(str(imagehash.whash(img, hash_size=8, image_scale=64, mode='haar', remove_max_haar_ll=True)), 16)
 
-        # Extract resized luma matrices using PIL Lanczos (same as imagehash internally)
         luma_img = img.convert('L')
         mat_8x8 = np.asarray(luma_img.resize((8, 8), Image.Resampling.LANCZOS), dtype=np.uint8)
         mat_9x8 = np.asarray(luma_img.resize((9, 8), Image.Resampling.LANCZOS), dtype=np.uint8)
         mat_32x32 = np.asarray(luma_img.resize((32, 32), Image.Resampling.LANCZOS), dtype=np.uint8)
         mat_64x64 = np.asarray(luma_img.resize((64, 64), Image.Resampling.LANCZOS), dtype=np.uint8)
 
-        # Layer A hashes computed directly on the matrices
         a_ahash = compute_layer_a_ahash(mat_8x8)
         a_dhash = compute_layer_a_dhash(mat_9x8)
         a_phash = compute_layer_a_phash(mat_32x32)
@@ -210,4 +137,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
