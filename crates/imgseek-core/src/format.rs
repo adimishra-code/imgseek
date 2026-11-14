@@ -11,6 +11,17 @@ pub enum ImageFormat {
 }
 
 impl ImageFormat {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Jpeg => "jpeg",
+            Self::Png => "png",
+            Self::WebP => "webp",
+            Self::Gif => "gif",
+            Self::Bmp => "bmp",
+            Self::Tiff => "tiff",
+        }
+    }
+
     pub fn mime_type(&self) -> &'static str {
         match self {
             Self::Jpeg => "image/jpeg",

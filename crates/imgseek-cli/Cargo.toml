@@ -4,11 +4,21 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[lib]
+name = "imgseek"
+path = "src/lib.rs"
+
 [[bin]]
 name = "imgseek"
 path = "src/main.rs"
 
 [dependencies]
 imgseek-core = { path = "../imgseek-core" }
+imgseek-store = { path = "../imgseek-store" }
 clap = { workspace = true }
 anyhow = { workspace = true }
+rayon = { workspace = true }
+walkdir = { workspace = true }
+
+[dev-dependencies]
+image = { workspace = true }

@@ -3,7 +3,7 @@ use std::path::Path;
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::error::Result;
-use crate::models::{Corpus, Doc, NewDoc, NewSighting, Sighting};
+use crate::models::{Corpus, Doc, IndexRecord, NewDoc, NewSighting, Sighting};
 use crate::schema::{apply_pragmas, migrate};
 
 pub struct Database {
@@ -140,6 +140,78 @@ impl Database {
             docs.push(doc?);
         }
         Ok(docs)
+    }
+
+    pub fn insert_batch(&mut self, records: &[IndexRecord]) -> Result<(usize, usize)> {
+        let tx = self.conn.transaction()?;
+        let mut docs_inserted = 0;
+        let mut sightings_inserted = 0;
+
+        for rec in records {
+            let existing_doc_id: Option<i64> = tx
+                .query_row(
+                    "SELECT doc_id FROM docs WHERE sha256 = ?1;",
+                    params![rec.sha256.as_slice()],
+                    |r| r.get(0),
+                )
+                .optional()?;
+
+            let doc_id = match existing_doc_id {
+                Some(id) => id,
+                None => {
+                    tx.execute(
+                        "INSERT INTO docs (
+                            sha256, byte_size, format, width, height,
+                            ahash, dhash, phash, whash,
+                            chroma_blob_ref, keypoints_ref, indexed_at
+                         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12);",
+                        params![
+                            rec.sha256.as_slice(),
+                            rec.byte_size,
+                            rec.format,
+                            rec.width,
+                            rec.height,
+                            rec.ahash as i64,
+                            rec.dhash as i64,
+                            rec.phash as i64,
+                            rec.whash as i64,
+                            rec.chroma_blob_ref,
+                            rec.keypoints_ref,
+                            rec.indexed_at,
+                        ],
+                    )?;
+                    docs_inserted += 1;
+                    tx.last_insert_rowid()
+                }
+            };
+
+            tx.execute(
+                "INSERT INTO sightings (
+                    doc_id, corpus_id, origin_uri, title,
+                    discovered_at, file_size, file_mtime,
+                    http_etag, http_last_modified
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, NULL)
+                 ON CONFLICT(corpus_id, origin_uri) DO UPDATE SET
+                    doc_id = excluded.doc_id,
+                    title = excluded.title,
+                    discovered_at = excluded.discovered_at,
+                    file_size = excluded.file_size,
+                    file_mtime = excluded.file_mtime;",
+                params![
+                    doc_id,
+                    rec.corpus_id,
+                    rec.origin_uri,
+                    rec.title,
+                    rec.discovered_at,
+                    rec.file_size,
+                    rec.file_mtime,
+                ],
+            )?;
+            sightings_inserted += 1;
+        }
+
+        tx.commit()?;
+        Ok((docs_inserted, sightings_inserted))
     }
 
     pub fn insert_or_replace_sighting(&self, sighting: &NewSighting) -> Result<i64> {

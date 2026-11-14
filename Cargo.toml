@@ -30,3 +30,5 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png",
 rusqlite = { version = "0.32", features = ["bundled"] }
 sha2 = "0.10"
 zstd = "0.13"
+rayon = "1.10"
+walkdir = "2.5"

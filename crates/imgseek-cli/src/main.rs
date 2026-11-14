@@ -1,6 +1,8 @@
-use clap::{Parser, Subcommand};
-use imgseek_core::Config;
 use std::path::PathBuf;
+
+use clap::{Parser, Subcommand};
+use imgseek::{run_index, IndexArgs};
+use imgseek_core::Config;
 
 #[derive(Parser)]
 #[command(
@@ -8,12 +10,18 @@ use std::path::PathBuf;
     about = "Deterministic, explainable, local reverse image search engine"
 )]
 struct Cli {
+    #[arg(short, long, global = true)]
+    config: Option<PathBuf>,
+
     #[command(subcommand)]
     command: Commands,
 }
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Index local directories or images
+    Index(IndexArgs),
+
     /// Manage configuration
     Config {
         #[command(subcommand)]
@@ -33,8 +41,12 @@ enum ConfigAction {
 
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
+    let config = Config::load_or_default(cli.config.as_deref())?;
 
     match cli.command {
+        Commands::Index(args) => {
+            run_index(&args, &config)?;
+        }
         Commands::Config { action } => match action {
             ConfigAction::Init { path } => {
                 if path.exists() {
