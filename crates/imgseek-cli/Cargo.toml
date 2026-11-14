@@ -16,6 +16,7 @@ path = "src/main.rs"
 imgseek-core = { path = "../imgseek-core" }
 imgseek-store = { path = "../imgseek-store" }
 imgseek-query = { path = "../imgseek-query" }
+imgseek-index = { path = "../imgseek-index" }
 clap = { workspace = true }
 anyhow = { workspace = true }
 rayon = { workspace = true }

@@ -3,8 +3,12 @@ use std::time::Instant;
 
 use clap::Args;
 use imgseek_core::{
-    ahash_from_luma, compute_color_histogram, dhash_from_luma, normalize, phash_from_luma,
-    sniff_format, whash_from_luma, Config,
+    ahash_from_luma, compute_color_histogram, dhash_from_luma, normalize, pdq_from_luma,
+    phash_from_luma, sniff_format, whash_from_luma, Config,
+};
+use imgseek_index::{
+    DataSegmentWriter, DocumentRecord, IndexSegmentWriter, Manifest, MihEnsembleIndex,
+    SegmentDescriptor,
 };
 use imgseek_store::{compute_sha256, BlobStore, Corpus, Database, IndexRecord};
 use rayon::prelude::*;
@@ -51,6 +55,7 @@ enum ProcessResult {
     Error(PathBuf, String),
 }
 
+#[derive(Clone)]
 struct ExtractedDoc {
     origin_uri: String,
     title: String,
@@ -64,6 +69,8 @@ struct ExtractedDoc {
     dhash: u64,
     phash: u64,
     whash: u64,
+    pdq: [u8; 32],
+    pdq_quality: u16,
     chroma_bytes: Vec<u8>,
 }
 
@@ -160,6 +167,7 @@ pub fn run_index(args: &IndexArgs, config: &Config) -> anyhow::Result<()> {
     let mut failed_count = 0usize;
 
     let mut batch_records = Vec::with_capacity(args.batch_size);
+    let mut successful_docs = Vec::new();
 
     for res in processed {
         match res {
@@ -169,7 +177,7 @@ pub fn run_index(args: &IndexArgs, config: &Config) -> anyhow::Result<()> {
                 batch_records.push(IndexRecord {
                     sha256: doc.sha256,
                     byte_size: doc.file_size,
-                    format: doc.format,
+                    format: doc.format.clone(),
                     width: doc.width,
                     height: doc.height,
                     ahash: doc.ahash,
@@ -180,12 +188,13 @@ pub fn run_index(args: &IndexArgs, config: &Config) -> anyhow::Result<()> {
                     keypoints_ref: None,
                     indexed_at: now,
                     corpus_id: corpus_name.clone(),
-                    origin_uri: doc.origin_uri,
-                    title: Some(doc.title),
+                    origin_uri: doc.origin_uri.clone(),
+                    title: Some(doc.title.clone()),
                     discovered_at: now,
                     file_size: Some(doc.file_size),
                     file_mtime: Some(doc.file_mtime),
                 });
+                successful_docs.push(doc);
 
                 if batch_records.len() >= args.batch_size {
                     let (_, sightings) = db.insert_batch(&batch_records)?;
@@ -209,6 +218,64 @@ pub fn run_index(args: &IndexArgs, config: &Config) -> anyhow::Result<()> {
     if !batch_records.is_empty() {
         let (_, sightings) = db.insert_batch(&batch_records)?;
         indexed_count += sightings;
+    }
+
+    if indexed_count > 0 && !successful_docs.is_empty() {
+        let mut manifest = Manifest::load_or_create(index_dir)?;
+        let next_segment_id = manifest
+            .segments
+            .iter()
+            .map(|s| s.segment_id)
+            .max()
+            .unwrap_or(0)
+            + 1;
+
+        let mut data_writer = DataSegmentWriter::create(index_dir, next_segment_id)?;
+        let mut ensemble = MihEnsembleIndex::new();
+
+        for doc in &successful_docs {
+            if let Some(db_doc) = db.get_doc_by_sha256(&doc.sha256)? {
+                let chroma_ref = compute_sha256(&doc.chroma_bytes);
+                let rec = DocumentRecord {
+                    doc_id: db_doc.doc_id as u32,
+                    phash: doc.phash,
+                    whash: doc.whash,
+                    dhash: doc.dhash,
+                    ahash: doc.ahash,
+                    pdq: doc.pdq,
+                    pdq_quality: doc.pdq_quality,
+                    width: doc.width as u16,
+                    height: doc.height as u16,
+                    chroma_ref,
+                };
+                data_writer.add_record(&rec)?;
+                ensemble.insert_record(&rec);
+            }
+        }
+
+        let (_, data_crc, min_doc_id, max_doc_id) = data_writer.finish()?;
+        let (_, idx_crc) = IndexSegmentWriter::write_index(index_dir, next_segment_id, &ensemble)?;
+
+        let tomb_filename = format!("seg_{:08}.tomb", next_segment_id);
+        let tomb_path = index_dir.join(&tomb_filename);
+        if !tomb_path.exists() {
+            std::fs::File::create(&tomb_path)?;
+        }
+
+        manifest.segments.push(SegmentDescriptor {
+            segment_id: next_segment_id,
+            doc_count: successful_docs.len() as u32,
+            tombstone_count: 0,
+            idx_file: format!("seg_{:08}.idx", next_segment_id),
+            data_file: format!("seg_{:08}.data", next_segment_id),
+            tomb_file: tomb_filename,
+            idx_checksum: idx_crc,
+            data_checksum: data_crc,
+            min_doc_id,
+            max_doc_id,
+        });
+        manifest.generation += 1;
+        manifest.save_atomic(index_dir)?;
     }
 
     let elapsed = start_time.elapsed().as_secs_f64();
@@ -335,6 +402,12 @@ fn process_file(path: &Path, config: &Config, _verbose: bool) -> ProcessResult {
         &norm.analysis.luma,
     );
 
+    let (pdq_hash, pdq_quality) = pdq_from_luma(
+        norm.analysis.width,
+        norm.analysis.height,
+        &norm.analysis.luma,
+    );
+
     let chroma = compute_color_histogram(&norm.analysis.rgb);
     let mut chroma_bytes = Vec::with_capacity(256 * 4);
     for bin in &chroma {
@@ -361,6 +434,8 @@ fn process_file(path: &Path, config: &Config, _verbose: bool) -> ProcessResult {
         dhash,
         phash,
         whash,
+        pdq: pdq_hash.0,
+        pdq_quality,
         chroma_bytes,
     }))
 }
