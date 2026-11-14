@@ -12,8 +12,8 @@ pub use error::{IndexError, Result};
 pub use manifest::{Manifest, SegmentDescriptor, CURRENT_FORMAT_VERSION, MANIFEST_FILENAME};
 pub use mih::{
     ball_masks, extract_chunks_256, extract_chunks_64, generate_ball_masks, get_ball_masks,
-    sphere_masks, HashAlgoId, MihChunkTable, MihChunkTableView, MihEnsembleIndex, MihFamilyIndex,
-    BUCKET_COUNT, BUCKET_ENTRY_SIZE, CHUNK_DIRECTORY_SIZE, TOTAL_BALL_MASKS_R3,
+    sphere_masks, CandidateHit, HashAlgoId, MihChunkTable, MihChunkTableView, MihEnsembleIndex,
+    MihFamilyIndex, BUCKET_COUNT, BUCKET_ENTRY_SIZE, CHUNK_DIRECTORY_SIZE, TOTAL_BALL_MASKS_R3,
 };
 pub use segment::{
     ChunkTableDescriptor, DataSegmentReader, DataSegmentWriter, DocumentRecord, IndexSegmentReader,

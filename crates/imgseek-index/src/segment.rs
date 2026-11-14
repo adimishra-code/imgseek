@@ -1,5 +1,8 @@
 use crate::error::{IndexError, Result};
-use crate::mih::{HashAlgoId, MihChunkTableView, MihEnsembleIndex};
+use crate::mih::{
+    ball_masks, extract_chunks_256, extract_chunks_64, CandidateHit, HashAlgoId, MihChunkTableView,
+    MihEnsembleIndex,
+};
 use crc32fast::Hasher;
 use memmap2::Mmap;
 use std::fs::{self, File};
@@ -693,6 +696,108 @@ impl IndexSegmentReader {
     pub fn pdq_chunk(&self, chunk_idx: usize) -> Result<MihChunkTableView<'_>> {
         self.chunk_view(HashAlgoId::Pdq, chunk_idx)
     }
+
+    /// Search candidates for a 64-bit hash using neighbour probing across 4 chunk tables.
+    pub fn search_candidates_64(
+        &self,
+        algo: HashAlgoId,
+        query_hash: u64,
+        tau: u8,
+    ) -> Result<Vec<CandidateHit>> {
+        let query_chunks = extract_chunks_64(query_hash);
+        let radius = tau / 4;
+        let masks = ball_masks(radius);
+
+        let mut hit_counts: std::collections::HashMap<u32, u8> = std::collections::HashMap::new();
+
+        for (chunk_idx, &q_chunk) in query_chunks.iter().enumerate() {
+            let view = self.chunk_view(algo, chunk_idx)?;
+            for &mask in masks {
+                let key = q_chunk ^ mask;
+                if view.is_empty(key) {
+                    continue;
+                }
+                let doc_ids = view.get(key)?;
+                for doc_id in doc_ids {
+                    let count = hit_counts.entry(doc_id).or_insert(0);
+                    *count = count.saturating_add(1);
+                }
+            }
+        }
+
+        let mut hits: Vec<CandidateHit> = hit_counts
+            .into_iter()
+            .map(|(doc_id, chunk_hits)| CandidateHit { doc_id, chunk_hits })
+            .collect();
+        hits.sort_unstable_by(|a, b| {
+            b.chunk_hits
+                .cmp(&a.chunk_hits)
+                .then_with(|| a.doc_id.cmp(&b.doc_id))
+        });
+
+        Ok(hits)
+    }
+
+    /// Search candidates for a 256-bit hash using neighbour probing across 16 chunk tables.
+    pub fn search_candidates_256(
+        &self,
+        algo: HashAlgoId,
+        query_hash: &[u8; 32],
+        tau: u8,
+    ) -> Result<Vec<CandidateHit>> {
+        let query_chunks = extract_chunks_256(query_hash);
+        let radius = tau / 16;
+        let masks = ball_masks(radius);
+
+        let mut hit_counts: std::collections::HashMap<u32, u8> = std::collections::HashMap::new();
+
+        for (chunk_idx, &q_chunk) in query_chunks.iter().enumerate() {
+            let view = self.chunk_view(algo, chunk_idx)?;
+            for &mask in masks {
+                let key = q_chunk ^ mask;
+                if view.is_empty(key) {
+                    continue;
+                }
+                let doc_ids = view.get(key)?;
+                for doc_id in doc_ids {
+                    let count = hit_counts.entry(doc_id).or_insert(0);
+                    *count = count.saturating_add(1);
+                }
+            }
+        }
+
+        let mut hits: Vec<CandidateHit> = hit_counts
+            .into_iter()
+            .map(|(doc_id, chunk_hits)| CandidateHit { doc_id, chunk_hits })
+            .collect();
+        hits.sort_unstable_by(|a, b| {
+            b.chunk_hits
+                .cmp(&a.chunk_hits)
+                .then_with(|| a.doc_id.cmp(&b.doc_id))
+        });
+
+        Ok(hits)
+    }
+
+    pub fn search_phash_candidates(&self, query_hash: u64, tau: u8) -> Result<Vec<CandidateHit>> {
+        self.search_candidates_64(HashAlgoId::PHash, query_hash, tau)
+    }
+
+    pub fn search_whash_candidates(&self, query_hash: u64, tau: u8) -> Result<Vec<CandidateHit>> {
+        self.search_candidates_64(HashAlgoId::WHash, query_hash, tau)
+    }
+
+    pub fn search_dhash_candidates(&self, query_hash: u64, tau: u8) -> Result<Vec<CandidateHit>> {
+        self.search_candidates_64(HashAlgoId::DHash, query_hash, tau)
+    }
+
+    pub fn search_pdq_candidates(
+        &self,
+        query_hash: &[u8; 32],
+        tau: u8,
+    ) -> Result<Vec<CandidateHit>> {
+        self.search_candidates_256(HashAlgoId::Pdq, query_hash, tau)
+    }
 }
 
 #[cfg(test)]
@@ -880,6 +985,58 @@ mod tests {
 
         let result = IndexSegmentReader::open(&final_path);
         assert!(matches!(result, Err(IndexError::ChecksumMismatch { .. })));
+
+        let _ = fs::remove_dir_all(&test_dir);
+    }
+
+    #[test]
+    fn test_index_segment_reader_neighbour_probing() {
+        let test_dir = std::env::temp_dir().join(format!(
+            "idx_seg_probe_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+
+        let mut ensemble = MihEnsembleIndex::new();
+        let base_rec = DocumentRecord {
+            doc_id: 50,
+            phash: 0x0000_0000_0000_0000,
+            whash: 0x1111_1111_1111_1111,
+            dhash: 0x2222_2222_2222_2222,
+            ahash: 0,
+            pdq: [0x00; 32],
+            pdq_quality: 95,
+            width: 200,
+            height: 200,
+            chroma_ref: [0; 32],
+        };
+        ensemble.insert_record(&base_rec);
+
+        let (final_path, _) =
+            IndexSegmentWriter::write_index(&test_dir, 4, &ensemble).expect("write idx");
+        let reader = IndexSegmentReader::open(&final_path).expect("open idx");
+
+        // Search pHash with 1 bit flip in chunk 0 and tau = 4
+        let query_phash = 0x0000_0000_0000_0001;
+        let hits = reader
+            .search_phash_candidates(query_phash, 4)
+            .expect("search phash");
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].doc_id, 50);
+        assert_eq!(hits[0].chunk_hits, 4);
+
+        // Search PDQ with 1 bit flip in chunk 0 and tau = 16
+        let mut query_pdq = [0x00; 32];
+        query_pdq[0] = 0x01;
+        let pdq_hits = reader
+            .search_pdq_candidates(&query_pdq, 16)
+            .expect("search pdq");
+        assert_eq!(pdq_hits.len(), 1);
+        assert_eq!(pdq_hits[0].doc_id, 50);
+        assert_eq!(pdq_hits[0].chunk_hits, 16);
 
         let _ = fs::remove_dir_all(&test_dir);
     }

@@ -144,6 +144,15 @@ impl HashAlgoId {
     }
 }
 
+/// A candidate match retrieved by multi-index hashing neighbour probing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CandidateHit {
+    /// Document identifier.
+    pub doc_id: u32,
+    /// Number of chunk tables where this candidate matched within the probe radius.
+    pub chunk_hits: u8,
+}
+
 /// In-memory builder representation of a single 16-bit chunk table.
 /// Contains 65,536 buckets mapping 16-bit chunk keys to lists of document IDs.
 #[derive(Debug, Clone)]
@@ -385,6 +394,85 @@ impl MihFamilyIndex {
         for table in &mut self.chunk_tables {
             table.sort_and_dedup();
         }
+    }
+
+    /// Search across 4 chunk tables for a 64-bit hash using neighbour probing.
+    ///
+    /// By the pigeonhole principle, if total Hamming distance is <= `tau`,
+    /// then at least one chunk has distance <= `tau / 4`.
+    /// Probing with radius $r = \lfloor \tau / 4 \rfloor$ guarantees 100% recall.
+    pub fn search_neighbors_64(&self, query_hash: u64, tau: u8) -> Vec<CandidateHit> {
+        assert_eq!(self.chunk_tables.len(), 4);
+        let query_chunks = extract_chunks_64(query_hash);
+        let radius = tau / 4;
+        let masks = ball_masks(radius);
+
+        let mut hit_counts: std::collections::HashMap<u32, u8> = std::collections::HashMap::new();
+
+        for (chunk_idx, &q_chunk) in query_chunks.iter().enumerate() {
+            let table = &self.chunk_tables[chunk_idx];
+            for &mask in masks {
+                let key = q_chunk ^ mask;
+                let docs = table.get(key);
+                for &doc_id in docs {
+                    let count = hit_counts.entry(doc_id).or_insert(0);
+                    *count = count.saturating_add(1);
+                }
+            }
+        }
+
+        let mut hits: Vec<CandidateHit> = hit_counts
+            .into_iter()
+            .map(|(doc_id, chunk_hits)| CandidateHit { doc_id, chunk_hits })
+            .collect();
+
+        // Sort candidates deterministically: chunk_hits desc, doc_id asc
+        hits.sort_unstable_by(|a, b| {
+            b.chunk_hits
+                .cmp(&a.chunk_hits)
+                .then_with(|| a.doc_id.cmp(&b.doc_id))
+        });
+
+        hits
+    }
+
+    /// Search across 16 chunk tables for a 256-bit hash using neighbour probing.
+    ///
+    /// By the pigeonhole principle, if total Hamming distance is <= `tau`,
+    /// then at least one chunk has distance <= `tau / 16`.
+    pub fn search_neighbors_256(&self, query_hash: &[u8; 32], tau: u8) -> Vec<CandidateHit> {
+        assert_eq!(self.chunk_tables.len(), 16);
+        let query_chunks = extract_chunks_256(query_hash);
+        let radius = tau / 16;
+        let masks = ball_masks(radius);
+
+        let mut hit_counts: std::collections::HashMap<u32, u8> = std::collections::HashMap::new();
+
+        for (chunk_idx, &q_chunk) in query_chunks.iter().enumerate() {
+            let table = &self.chunk_tables[chunk_idx];
+            for &mask in masks {
+                let key = q_chunk ^ mask;
+                let docs = table.get(key);
+                for &doc_id in docs {
+                    let count = hit_counts.entry(doc_id).or_insert(0);
+                    *count = count.saturating_add(1);
+                }
+            }
+        }
+
+        let mut hits: Vec<CandidateHit> = hit_counts
+            .into_iter()
+            .map(|(doc_id, chunk_hits)| CandidateHit { doc_id, chunk_hits })
+            .collect();
+
+        // Sort candidates deterministically: chunk_hits desc, doc_id asc
+        hits.sort_unstable_by(|a, b| {
+            b.chunk_hits
+                .cmp(&a.chunk_hits)
+                .then_with(|| a.doc_id.cmp(&b.doc_id))
+        });
+
+        hits
     }
 }
 
@@ -628,5 +716,87 @@ mod tests {
         for (i, &chunk) in pdq_chunks.iter().enumerate() {
             assert_eq!(ensemble.pdq.chunk_tables[i].get(chunk), &[1]);
         }
+    }
+
+    #[test]
+    fn test_neighbour_probing_exact_match() {
+        let mut family = MihFamilyIndex::new_64(HashAlgoId::PHash);
+        let h1: u64 = 0x0123_4567_89AB_CDEF;
+        family.insert_64(h1, 42);
+
+        // Exact query with tau = 0
+        let hits = family.search_neighbors_64(h1, 0);
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].doc_id, 42);
+        assert_eq!(hits[0].chunk_hits, 4);
+
+        // Query with different hash and tau = 0
+        let h2: u64 = 0x0123_4567_89AB_CDE0; // 4 bit difference in chunk 0
+        let hits_miss = family.search_neighbors_64(h2, 0);
+        // Chunks 1, 2, 3 match at r = 0, so hits still finds it via chunks 1..3
+        assert_eq!(hits_miss.len(), 1);
+        assert_eq!(hits_miss[0].chunk_hits, 3);
+    }
+
+    #[test]
+    fn test_neighbour_probing_single_bit_flip() {
+        let mut family = MihFamilyIndex::new_64(HashAlgoId::PHash);
+        let base_hash: u64 = 0x0000_0000_0000_0000;
+        family.insert_64(base_hash, 1);
+
+        // Flip 1 bit in chunk 0: total dist = 1, chunk 0 dist = 1, chunks 1..3 dist = 0
+        let query_1 = 0x0000_0000_0000_0001;
+        // tau = 0 (r = 0): chunk 0 does not match, but chunks 1..3 do match (chunk_hits = 3)
+        let hits_tau0 = family.search_neighbors_64(query_1, 0);
+        assert_eq!(hits_tau0.len(), 1);
+        assert_eq!(hits_tau0[0].chunk_hits, 3);
+
+        // tau = 4 (r = 1): chunk 0 matches at distance 1 <= 1, chunks 1..3 match at dist 0 <= 1
+        // All 4 chunks hit!
+        let hits_tau4 = family.search_neighbors_64(query_1, 4);
+        assert_eq!(hits_tau4.len(), 1);
+        assert_eq!(hits_tau4[0].chunk_hits, 4);
+    }
+
+    #[test]
+    fn test_neighbour_probing_distributed_bit_flips() {
+        let mut family = MihFamilyIndex::new_64(HashAlgoId::PHash);
+        // Base hash has chunk0=0x0000, chunk1=0x0000, chunk2=0x0000, chunk3=0x0000
+        family.insert_64(0, 10);
+
+        // Query hash has 2 bit flips in each chunk: total distance = 8
+        // Chunk dist = 2 in every chunk
+        let q: u64 = 0x0003_0003_0003_0003;
+
+        // With tau = 4: r = 4 / 4 = 1. Chunk distance is 2 > 1, so no chunk probes it!
+        let hits_tau4 = family.search_neighbors_64(q, 4);
+        assert_eq!(hits_tau4.len(), 0);
+
+        // With tau = 8: r = 8 / 4 = 2. Chunk distance is 2 <= 2, all 4 chunks probe it!
+        let hits_tau8 = family.search_neighbors_64(q, 8);
+        assert_eq!(hits_tau8.len(), 1);
+        assert_eq!(hits_tau8[0].doc_id, 10);
+        assert_eq!(hits_tau8[0].chunk_hits, 4);
+    }
+
+    #[test]
+    fn test_neighbour_probing_pdq() {
+        let mut family = MihFamilyIndex::new_256(HashAlgoId::Pdq);
+        let base_hash = [0u8; 32];
+        family.insert_256(&base_hash, 99);
+
+        // Single bit flip in byte 0
+        let mut query = [0u8; 32];
+        query[0] = 0x01;
+
+        // tau = 0 (r = 0): chunks 1..15 match (chunk_hits = 15)
+        let hits0 = family.search_neighbors_256(&query, 0);
+        assert_eq!(hits0.len(), 1);
+        assert_eq!(hits0[0].chunk_hits, 15);
+
+        // tau = 16 (r = 1): all 16 chunks match!
+        let hits16 = family.search_neighbors_256(&query, 16);
+        assert_eq!(hits16.len(), 1);
+        assert_eq!(hits16[0].chunk_hits, 16);
     }
 }
