@@ -1,9 +1,12 @@
+pub mod compaction;
 pub mod compression;
 pub mod error;
 pub mod manifest;
 pub mod mih;
 pub mod segment;
+pub mod verify;
 
+pub use compaction::{compact_segments, mark_tombstone, CompactionResult};
 pub use compression::{
     decode_for_block, decode_postings, encode_for_block, encode_postings, read_varint,
     write_varint, FOR_BLOCK_SIZE,
@@ -20,3 +23,4 @@ pub use segment::{
     IndexSegmentWriter, SegmentFooter, SegmentHeader, DATA_MAGIC, FOOTER_LEN, FOOTER_MAGIC,
     HEADER_LEN, IDX_MAGIC, RECORD_LEN,
 };
+pub use verify::{verify_index, verify_segment, SegmentVerification, VerificationReport};

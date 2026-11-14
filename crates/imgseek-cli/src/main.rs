@@ -1,7 +1,9 @@
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use imgseek::{run_index, run_query, IndexArgs, QueryArgs};
+use imgseek::{
+    run_compact, run_index, run_query, run_verify, CompactArgs, IndexArgs, QueryArgs, VerifyArgs,
+};
 use imgseek_core::Config;
 
 #[derive(Parser)]
@@ -24,6 +26,12 @@ enum Commands {
 
     /// Query the index with an image
     Query(QueryArgs),
+
+    /// Verify index segment integrity and checksums
+    Verify(VerifyArgs),
+
+    /// Compact index segments and purge tombstones
+    Compact(CompactArgs),
 
     /// Manage configuration
     Config {
@@ -52,6 +60,12 @@ fn main() -> anyhow::Result<()> {
         }
         Commands::Query(args) => {
             run_query(&args, &config)?;
+        }
+        Commands::Verify(args) => {
+            run_verify(&args, &config)?;
+        }
+        Commands::Compact(args) => {
+            run_compact(&args, &config)?;
         }
         Commands::Config { action } => match action {
             ConfigAction::Init { path } => {
