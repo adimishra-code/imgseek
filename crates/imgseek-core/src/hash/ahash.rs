@@ -66,4 +66,3 @@ mod tests {
         assert!(checked >= 200, "Must check at least 200 golden records");
     }
 }
-
