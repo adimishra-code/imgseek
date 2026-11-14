@@ -1,7 +1,6 @@
 use crate::format::ImageFormat;
 use image::{imageops, DynamicImage};
 
-/// EXIF orientation tag values (1..=8).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExifOrientation {
     Normal = 1,
@@ -30,7 +29,6 @@ impl ExifOrientation {
     }
 }
 
-/// Parse EXIF orientation from image raw bytes if JPEG or TIFF.
 pub fn parse_exif_orientation(bytes: &[u8], format: ImageFormat) -> Option<ExifOrientation> {
     match format {
         ImageFormat::Jpeg => parse_jpeg_exif(bytes),
@@ -52,7 +50,6 @@ fn parse_jpeg_exif(bytes: &[u8]) -> Option<ExifOrientation> {
         let marker = bytes[idx + 1];
         idx += 2;
 
-        // Standalone markers without length
         if marker == 0xD8 || marker == 0xD9 || (0xD0..=0xD7).contains(&marker) {
             continue;
         }
@@ -65,7 +62,6 @@ fn parse_jpeg_exif(bytes: &[u8]) -> Option<ExifOrientation> {
             return None;
         }
 
-        // APP1 marker (0xE1) contains EXIF
         if marker == 0xE1 {
             let app1_payload = &bytes[idx + 2..idx + len];
             if app1_payload.len() >= 6 && app1_payload.starts_with(b"Exif\0\0") {
@@ -128,7 +124,6 @@ fn parse_tiff_exif(bytes: &[u8]) -> Option<ExifOrientation> {
         }
         let tag = read_u16(&bytes[entry_offset..entry_offset + 2])?;
         if tag == 0x0112 {
-            // Orientation tag
             let val = read_u16(&bytes[entry_offset + 8..entry_offset + 10])?;
             return ExifOrientation::from_u16(val);
         }
@@ -138,7 +133,6 @@ fn parse_tiff_exif(bytes: &[u8]) -> Option<ExifOrientation> {
     None
 }
 
-/// Applies EXIF orientation to a DynamicImage.
 pub fn apply_orientation(img: DynamicImage, orientation: ExifOrientation) -> DynamicImage {
     match orientation {
         ExifOrientation::Normal => img,
@@ -146,13 +140,11 @@ pub fn apply_orientation(img: DynamicImage, orientation: ExifOrientation) -> Dyn
         ExifOrientation::Rotate180 => img.rotate180(),
         ExifOrientation::FlipVertical => img.flipv(),
         ExifOrientation::Transpose => {
-            // Transpose = flip horizontal + rotate 270 CW (or rotate90 + fliph)
             let flipped = img.fliph();
             imageops::rotate270(&flipped).into()
         }
         ExifOrientation::Rotate90 => img.rotate90(),
         ExifOrientation::Transverse => {
-            // Transverse = flip horizontal + rotate 90 CW
             let flipped = img.fliph();
             imageops::rotate90(&flipped).into()
         }
@@ -167,31 +159,27 @@ mod tests {
 
     #[test]
     fn test_apply_orientation_rotate90() {
-        // Create 2x1 image: pixel (0,0) is red, (1,0) is blue
         let mut img = RgbImage::new(2, 1);
         img.put_pixel(0, 0, Rgb([255, 0, 0]));
         img.put_pixel(1, 0, Rgb([0, 0, 255]));
         let dyn_img = DynamicImage::ImageRgb8(img);
 
         let rotated = apply_orientation(dyn_img, ExifOrientation::Rotate90);
-        // After 90 deg clockwise rotation, dimensions should be 1x2
         assert_eq!(rotated.width(), 1);
         assert_eq!(rotated.height(), 2);
     }
 
     #[test]
     fn test_parse_tiff_orientation() {
-        // Synthetic minimal TIFF with orientation = 6 (Rotate90)
         let mut tiff = Vec::new();
-        tiff.extend_from_slice(b"II*\0"); // LE magic
-        tiff.extend_from_slice(&8u32.to_le_bytes()); // IFD0 offset at 8
-        tiff.extend_from_slice(&1u16.to_le_bytes()); // 1 entry
-                                                     // Entry: tag 0x0112, type 3 (SHORT), count 1, value 6
+        tiff.extend_from_slice(b"II*\0");
+        tiff.extend_from_slice(&8u32.to_le_bytes());
+        tiff.extend_from_slice(&1u16.to_le_bytes());
         tiff.extend_from_slice(&0x0112u16.to_le_bytes());
         tiff.extend_from_slice(&3u16.to_le_bytes());
         tiff.extend_from_slice(&1u32.to_le_bytes());
         tiff.extend_from_slice(&6u16.to_le_bytes());
-        tiff.extend_from_slice(&[0, 0]); // pad to 4 bytes for value
+        tiff.extend_from_slice(&[0, 0]);
 
         let ori = parse_exif_orientation(&tiff, ImageFormat::Tiff);
         assert_eq!(ori, Some(ExifOrientation::Rotate90));

@@ -6,7 +6,6 @@ use crate::decode::decode_image;
 use crate::error::Result;
 use crate::orient::{apply_orientation, parse_exif_orientation};
 
-/// The downscaled view used for local features (ORB) and chroma histograms.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AnalysisView {
     pub width: u32,
@@ -15,7 +14,6 @@ pub struct AnalysisView {
     pub luma: Vec<u8>,
 }
 
-/// The canonical normalised image container produced by the ingest/query pipeline.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NormalizedImage {
     pub width: u32,
@@ -25,15 +23,12 @@ pub struct NormalizedImage {
     pub analysis: AnalysisView,
 }
 
-/// Converts RGB8 pixel slice to luma using ITU-R 601 integer arithmetic matching PIL:
-/// Y = (R*19595 + G*38470 + B*7471 + 0x8000) >> 16
 #[inline]
 pub fn rgb_to_luma_byte(r: u8, g: u8, b: u8) -> u8 {
     let y = (r as u32 * 19595 + g as u32 * 38470 + b as u32 * 7471 + 0x8000) >> 16;
     y as u8
 }
 
-/// Computes luma buffer from an RGB8 buffer.
 pub fn compute_luma_from_rgb(rgb: &[u8]) -> Vec<u8> {
     let count = rgb.len() / 3;
     let mut luma = Vec::with_capacity(count);
@@ -44,14 +39,6 @@ pub fn compute_luma_from_rgb(rgb: &[u8]) -> Vec<u8> {
     luma
 }
 
-/// Runs the full canonical normalisation pipeline:
-/// 1. Magic bytes sniff
-/// 2. Header dimension check against pixel budget
-/// 3. Decode
-/// 4. EXIF orientation (JPEG/TIFF)
-/// 5. Alpha composited onto white, converted to 8-bit sRGB
-/// 6. Full-resolution integer luma
-/// 7. Analysis view (longest side <= analysis_max_side, Lanczos3, never upscaled)
 pub fn normalize(bytes: &[u8], config: &NormalizeConfig) -> Result<NormalizedImage> {
     let (decoded, format) = decode_image(bytes, config.max_pixels)?;
 
@@ -115,11 +102,14 @@ pub fn normalize(bytes: &[u8], config: &NormalizeConfig) -> Result<NormalizedIma
 #[cfg(test)]
 mod tests {
     use super::*;
-    use image::{Rgb, RgbImage};
+    use image::{ImageBuffer, Rgb};
     use std::io::Cursor;
 
-    fn make_test_png(width: u32, height: u32, color: [u8; 3]) -> Vec<u8> {
-        let img = RgbImage::from_pixel(width, height, Rgb(color));
+    fn make_test_rgb_png(width: u32, height: u32, color: [u8; 3]) -> Vec<u8> {
+        let mut img: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(width, height);
+        for pixel in img.pixels_mut() {
+            *pixel = Rgb(color);
+        }
         let mut buf = Vec::new();
         img.write_to(&mut Cursor::new(&mut buf), image::ImageFormat::Png)
             .unwrap();
@@ -128,41 +118,39 @@ mod tests {
 
     #[test]
     fn test_pil_integer_luma_weights() {
-        assert_eq!(rgb_to_luma_byte(0, 0, 0), 0);
         assert_eq!(rgb_to_luma_byte(255, 255, 255), 255);
-        // Pure red: 255 * 19595 + 32768 = 5029493 >> 16 = 76
+        assert_eq!(rgb_to_luma_byte(0, 0, 0), 0);
         assert_eq!(rgb_to_luma_byte(255, 0, 0), 76);
-        // Pure green: 255 * 38470 + 32768 = 9842618 >> 16 = 150
         assert_eq!(rgb_to_luma_byte(0, 255, 0), 150);
-        // Pure blue: 255 * 7471 + 32768 = 1937873 >> 16 = 29
         assert_eq!(rgb_to_luma_byte(0, 0, 255), 29);
     }
 
     #[test]
     fn test_normalize_small_image_no_downscale() {
-        let png = make_test_png(100, 50, [100, 150, 200]);
+        let png = make_test_rgb_png(100, 50, [100, 150, 200]);
         let cfg = NormalizeConfig::default();
-        let norm = normalize(&png, &cfg).unwrap();
+        let normalized = normalize(&png, &cfg).unwrap();
 
-        assert_eq!(norm.width, 100);
-        assert_eq!(norm.height, 50);
-        assert_eq!(norm.analysis.width, 100);
-        assert_eq!(norm.analysis.height, 50);
-        assert_eq!(norm.rgb.len(), 100 * 50 * 3);
-        assert_eq!(norm.luma.len(), 100 * 50);
+        assert_eq!(normalized.width, 100);
+        assert_eq!(normalized.height, 50);
+        assert_eq!(normalized.analysis.width, 100);
+        assert_eq!(normalized.analysis.height, 50);
+        assert_eq!(normalized.rgb.len(), 100 * 50 * 3);
+        assert_eq!(normalized.luma.len(), 100 * 50);
     }
 
     #[test]
     fn test_normalize_large_image_downscale_to_1024() {
-        let png = make_test_png(2000, 1000, [50, 100, 150]);
-        let cfg = NormalizeConfig::default();
-        let norm = normalize(&png, &cfg).unwrap();
+        let png = make_test_rgb_png(2000, 1000, [50, 100, 150]);
+        let cfg = NormalizeConfig {
+            max_pixels: 40_000_000,
+            analysis_max_side: 1024,
+        };
+        let normalized = normalize(&png, &cfg).unwrap();
 
-        assert_eq!(norm.width, 2000);
-        assert_eq!(norm.height, 1000);
-        assert_eq!(norm.analysis.width, 1024);
-        assert_eq!(norm.analysis.height, 512);
-        assert_eq!(norm.analysis.rgb.len(), 1024 * 512 * 3);
-        assert_eq!(norm.analysis.luma.len(), 1024 * 512);
+        assert_eq!(normalized.width, 2000);
+        assert_eq!(normalized.height, 1000);
+        assert_eq!(normalized.analysis.width, 1024);
+        assert_eq!(normalized.analysis.height, 512);
     }
 }

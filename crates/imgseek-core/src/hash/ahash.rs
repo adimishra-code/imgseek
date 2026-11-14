@@ -1,9 +1,6 @@
 use image::imageops::{self, FilterType};
 use image::GrayImage;
 
-/// Computes aHash (average hash) from an already-resized 8x8 luma array (64 bytes).
-/// Bit order: row-major, element 0 is MSB of u64.
-/// Logic: bit = pixel > mean.
 pub fn ahash_from_8x8(pixels: &[u8; 64]) -> u64 {
     let sum: u64 = pixels.iter().map(|&p| p as u64).sum();
     let mean = sum as f64 / 64.0;
@@ -15,7 +12,6 @@ pub fn ahash_from_8x8(pixels: &[u8; 64]) -> u64 {
     hash
 }
 
-/// Computes aHash from arbitrary width x height luma buffer by resizing to 8x8 with Lanczos3.
 pub fn ahash_from_luma(width: u32, height: u32, luma: &[u8]) -> u64 {
     let gray_img = GrayImage::from_raw(width, height, luma.to_vec())
         .expect("luma buffer size must match width * height");

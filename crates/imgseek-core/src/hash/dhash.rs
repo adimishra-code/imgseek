@@ -1,9 +1,6 @@
 use image::imageops::{self, FilterType};
 use image::GrayImage;
 
-/// Computes dHash (difference hash) from an already-resized 9 wide x 8 high luma array (72 bytes).
-/// Bit order: row-major, element 0 is MSB of u64.
-/// Logic: for each row, bit = pixel[x+1] > pixel[x].
 pub fn dhash_from_9x8(pixels: &[u8; 72]) -> u64 {
     let mut hash = 0u64;
     for r in 0..8 {
@@ -17,7 +14,6 @@ pub fn dhash_from_9x8(pixels: &[u8; 72]) -> u64 {
     hash
 }
 
-/// Computes dHash from arbitrary width x height luma buffer by resizing to 9x8 with Lanczos3.
 pub fn dhash_from_luma(width: u32, height: u32, luma: &[u8]) -> u64 {
     let gray_img = GrayImage::from_raw(width, height, luma.to_vec())
         .expect("luma buffer size must match width * height");
@@ -68,4 +64,3 @@ mod tests {
         assert!(checked >= 200, "Must check at least 200 golden records");
     }
 }
-

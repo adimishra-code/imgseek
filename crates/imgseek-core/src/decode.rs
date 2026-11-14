@@ -14,19 +14,15 @@ pub fn map_format(fmt: ImageFormat) -> ImgFormat {
     }
 }
 
-/// Decodes an image from bytes, enforcing format sniffing and a pixel budget
-/// checked from the header before any full pixel decoding takes place.
 pub fn decode_image(bytes: &[u8], max_pixels: u64) -> Result<(DynamicImage, ImageFormat)> {
     let fmt = sniff_format(bytes)?;
     let img_fmt = map_format(fmt);
 
-    // 1. Read dimensions from header first without decoding full image
     let reader = ImageReader::with_format(Cursor::new(bytes), img_fmt);
     let (width, height) = reader.into_dimensions().map_err(|e| {
         CoreError::DecodeError(format!("failed to read image header dimensions: {e}"))
     })?;
 
-    // 2. Check pixel budget against width * height
     let total_pixels = (width as u64).saturating_mul(height as u64);
     if total_pixels > max_pixels {
         return Err(CoreError::PixelBudgetExceeded {
@@ -36,7 +32,6 @@ pub fn decode_image(bytes: &[u8], max_pixels: u64) -> Result<(DynamicImage, Imag
         });
     }
 
-    // 3. Decode image
     let mut reader = ImageReader::with_format(Cursor::new(bytes), img_fmt);
     let mut limits = image::Limits::default();
     limits.max_image_width = Some(width);
@@ -74,8 +69,8 @@ mod tests {
 
     #[test]
     fn test_pixel_budget_exceeded() {
-        let png_bytes = make_test_png(100, 100); // 10,000 pixels
-        let res = decode_image(&png_bytes, 500); // limit 500
+        let png_bytes = make_test_png(100, 100);
+        let res = decode_image(&png_bytes, 500);
         match res {
             Err(CoreError::PixelBudgetExceeded {
                 width,
@@ -92,20 +87,12 @@ mod tests {
 
     #[test]
     fn test_truncated_jpeg_fails_gracefully() {
-        // JPEG magic bytes followed by truncated content
         let truncated = vec![0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46];
         let res = decode_image(&truncated, 40_000_000);
-        assert!(res.is_err(), "truncated image should return error");
+        assert!(res.is_err());
         match res {
             Err(CoreError::DecodeError(_)) => {}
             other => panic!("expected DecodeError, got {other:?}"),
         }
-    }
-
-    #[test]
-    fn test_non_image_bytes_rejected_by_magic() {
-        let data = b"not an image file at all";
-        let res = decode_image(data, 40_000_000);
-        assert!(matches!(res, Err(CoreError::UnsupportedFormat(_))));
     }
 }

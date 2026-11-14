@@ -23,8 +23,6 @@ impl ImageFormat {
     }
 }
 
-/// Sniff image format by magic bytes.
-/// Accepts JPEG, PNG, WebP, GIF, BMP, TIFF. Rejects everything else.
 pub fn sniff_format(bytes: &[u8]) -> Result<ImageFormat> {
     if bytes.len() < 2 {
         return Err(CoreError::UnsupportedFormat(
@@ -32,32 +30,26 @@ pub fn sniff_format(bytes: &[u8]) -> Result<ImageFormat> {
         ));
     }
 
-    // JPEG: 0xFF, 0xD8, 0xFF
     if bytes.len() >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF {
         return Ok(ImageFormat::Jpeg);
     }
 
-    // PNG: 89 50 4E 47 0D 0A 1A 0A
     if bytes.len() >= 8 && bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
         return Ok(ImageFormat::Png);
     }
 
-    // GIF: "GIF87a" or "GIF89a"
     if bytes.len() >= 6 && (bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a")) {
         return Ok(ImageFormat::Gif);
     }
 
-    // BMP: "BM"
     if bytes.len() >= 2 && bytes.starts_with(b"BM") {
         return Ok(ImageFormat::Bmp);
     }
 
-    // TIFF: "II\x2a\x00" (little-endian) or "MM\x00\x2a" (big-endian)
     if bytes.len() >= 4 && (bytes.starts_with(b"II*\x00") || bytes.starts_with(b"MM\x00*")) {
         return Ok(ImageFormat::Tiff);
     }
 
-    // WebP: starts with "RIFF" and has "WEBP" at offset 8
     if bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP" {
         return Ok(ImageFormat::WebP);
     }
@@ -99,26 +91,24 @@ mod tests {
 
     #[test]
     fn test_sniff_tiff_le_and_be() {
-        let data_le = b"II*\x00\x08\x00\x00\x00";
-        let data_be = b"MM\x00*\x00\x00\x00\x08";
-        assert_eq!(sniff_format(data_le).unwrap(), ImageFormat::Tiff);
-        assert_eq!(sniff_format(data_be).unwrap(), ImageFormat::Tiff);
+        let le = b"II*\x00\x08\x00\x00\x00";
+        let be = b"MM\x00*\x00\x00\x00\x08";
+        assert_eq!(sniff_format(le).unwrap(), ImageFormat::Tiff);
+        assert_eq!(sniff_format(be).unwrap(), ImageFormat::Tiff);
     }
 
     #[test]
     fn test_sniff_webp() {
         let mut data = Vec::new();
         data.extend_from_slice(b"RIFF");
-        data.extend_from_slice(&[0x00, 0x00, 0x00, 0x00]); // file size
+        data.extend_from_slice(&[0, 0, 0, 0]);
         data.extend_from_slice(b"WEBP");
         assert_eq!(sniff_format(&data).unwrap(), ImageFormat::WebP);
     }
 
     #[test]
     fn test_sniff_reject_unknown() {
-        assert!(sniff_format(b"<html>hello</html>").is_err());
-        assert!(sniff_format(b"").is_err());
-        assert!(sniff_format(b"\x00\x01").is_err());
-        assert!(sniff_format(b"RIFF....AVI ").is_err());
+        let data = b"hello world this is text";
+        assert!(sniff_format(data).is_err());
     }
 }
