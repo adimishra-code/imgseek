@@ -142,6 +142,52 @@ impl Database {
         Ok(docs)
     }
 
+    pub fn get_docs_by_corpus(&self, corpus_id: &str) -> Result<Vec<Doc>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT DISTINCT d.doc_id, d.sha256, d.byte_size, d.format, d.width, d.height,
+                    d.ahash, d.dhash, d.phash, d.whash,
+                    d.chroma_blob_ref, d.keypoints_ref, d.indexed_at
+             FROM docs d
+             JOIN sightings s ON d.doc_id = s.doc_id
+             WHERE s.corpus_id = ?1
+             ORDER BY d.doc_id ASC;",
+        )?;
+        let doc_iter = stmt.query_map(params![corpus_id], Self::row_to_doc)?;
+        let mut docs = Vec::new();
+        for doc in doc_iter {
+            docs.push(doc?);
+        }
+        Ok(docs)
+    }
+
+    pub fn get_sightings_by_doc_id(&self, doc_id: i64) -> Result<Vec<Sighting>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT sighting_id, doc_id, corpus_id, origin_uri, title,
+                    discovered_at, file_size, file_mtime,
+                    http_etag, http_last_modified
+             FROM sightings WHERE doc_id = ?1 ORDER BY sighting_id ASC;",
+        )?;
+        let rows = stmt.query_map(params![doc_id], |row| {
+            Ok(Sighting {
+                sighting_id: row.get(0)?,
+                doc_id: row.get(1)?,
+                corpus_id: row.get(2)?,
+                origin_uri: row.get(3)?,
+                title: row.get(4)?,
+                discovered_at: row.get(5)?,
+                file_size: row.get(6)?,
+                file_mtime: row.get(7)?,
+                http_etag: row.get(8)?,
+                http_last_modified: row.get(9)?,
+            })
+        })?;
+        let mut sightings = Vec::new();
+        for s in rows {
+            sightings.push(s?);
+        }
+        Ok(sightings)
+    }
+
     pub fn insert_batch(&mut self, records: &[IndexRecord]) -> Result<(usize, usize)> {
         let tx = self.conn.transaction()?;
         let mut docs_inserted = 0;

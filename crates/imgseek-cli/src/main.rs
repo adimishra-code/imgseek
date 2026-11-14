@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use imgseek::{run_index, IndexArgs};
+use imgseek::{run_index, run_query, IndexArgs, QueryArgs};
 use imgseek_core::Config;
 
 #[derive(Parser)]
@@ -21,6 +21,9 @@ struct Cli {
 enum Commands {
     /// Index local directories or images
     Index(IndexArgs),
+
+    /// Query the index with an image
+    Query(QueryArgs),
 
     /// Manage configuration
     Config {
@@ -46,6 +49,9 @@ fn main() -> anyhow::Result<()> {
     match cli.command {
         Commands::Index(args) => {
             run_index(&args, &config)?;
+        }
+        Commands::Query(args) => {
+            run_query(&args, &config)?;
         }
         Commands::Config { action } => match action {
             ConfigAction::Init { path } => {
