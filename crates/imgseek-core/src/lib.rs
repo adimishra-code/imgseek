@@ -1,3 +1,4 @@
+pub mod chroma;
 pub mod composite;
 pub mod config;
 pub mod decode;
@@ -7,6 +8,9 @@ pub mod hash;
 pub mod normalize;
 pub mod orient;
 
+pub use chroma::{
+    compute_color_histogram, histogram_distance, histogram_intersection, hsv_to_bin, rgb_to_hsv,
+};
 pub use composite::composite_onto_white;
 pub use config::Config;
 pub use decode::decode_image;
