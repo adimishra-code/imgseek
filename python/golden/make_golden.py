@@ -50,6 +50,33 @@ def compute_layer_a_whash(matrix_64x64):
     diff = ll3 > med
     return hash_to_u64(diff)
 
+def compute_layer_a_pdq(matrix_64x64):
+    dct = scipy.fftpack.dct(scipy.fftpack.dct(matrix_64x64.astype(float), axis=0, norm=None), axis=1, norm=None)
+    block16 = dct[:16, :16]
+    med = float(np.median(block16))
+    diff = block16 > med
+    flat = diff.flatten()
+    bytes_out = bytearray(32)
+    for i, bit in enumerate(flat):
+        if bit:
+            bytes_out[i // 8] |= (1 << (7 - (i % 8)))
+
+    grad_sum = 0
+    for y in range(64):
+        for x in range(63):
+            u = float(matrix_64x64[y, x])
+            v = float(matrix_64x64[y, x + 1])
+            d = int(np.trunc((u - v) * 100.0 / 255.0))
+            grad_sum += abs(d)
+    for y in range(63):
+        for x in range(64):
+            u = float(matrix_64x64[y, x])
+            v = float(matrix_64x64[y + 1, x])
+            d = int(np.trunc((u - v) * 100.0 / 255.0))
+            grad_sum += abs(d)
+    quality = min(100, max(0, grad_sum // 90))
+    return bytes_out.hex(), quality
+
 def generate_synthetic_image(idx, rng, size=(128, 128)):
     w, h = size
     base = rng.uniform(40, 215, (h, w, 3))
@@ -106,6 +133,7 @@ def main():
         a_dhash = compute_layer_a_dhash(mat_9x8)
         a_phash = compute_layer_a_phash(mat_32x32)
         a_whash = compute_layer_a_whash(mat_64x64)
+        a_pdq, a_quality = compute_layer_a_pdq(mat_64x64)
 
         record = {
             "id": idx,
@@ -119,6 +147,8 @@ def main():
                 "dhash": a_dhash,
                 "phash": a_phash,
                 "whash": a_whash,
+                "pdq": a_pdq,
+                "pdq_quality": a_quality,
             },
             "layer_b": {
                 "ahash": b_ahash,
