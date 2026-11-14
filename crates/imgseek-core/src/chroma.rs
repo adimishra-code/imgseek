@@ -68,6 +68,30 @@ pub fn histogram_distance(h1: &[f32; 256], h2: &[f32; 256]) -> f32 {
     (1.0 - histogram_intersection(h1, h2)).clamp(0.0, 1.0)
 }
 
+/// Serialize a 256-bin color histogram into a 1024-byte little-endian IEEE 754 array.
+pub fn chroma_to_bytes(chroma: &[f32; 256]) -> [u8; 1024] {
+    let mut bytes = [0u8; 1024];
+    for (i, &val) in chroma.iter().enumerate() {
+        bytes[4 * i..4 * i + 4].copy_from_slice(&val.to_le_bytes());
+    }
+    bytes
+}
+
+/// Deserialize a 1024-byte slice into a 256-bin color histogram.
+pub fn bytes_to_chroma(bytes: &[u8]) -> Result<[f32; 256], crate::error::CoreError> {
+    if bytes.len() != 1024 {
+        return Err(crate::error::CoreError::InvalidChroma(format!(
+            "chroma bytes length {} is not 1024",
+            bytes.len()
+        )));
+    }
+    let mut chroma = [0f32; 256];
+    for (i, cell) in chroma.iter_mut().enumerate() {
+        *cell = f32::from_le_bytes(bytes[4 * i..4 * i + 4].try_into().unwrap());
+    }
+    Ok(chroma)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -14,6 +14,9 @@ pub enum CoreError {
     #[error("configuration error: {0}")]
     ConfigError(String),
 
+    #[error("invalid chroma data: {0}")]
+    InvalidChroma(String),
+
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
 }

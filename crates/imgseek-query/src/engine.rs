@@ -1,27 +1,14 @@
 use std::path::Path;
 
+pub use imgseek_core::ScoreBreakdown;
 use imgseek_core::{
-    ahash_from_luma, compute_color_histogram, dhash_from_luma, histogram_distance, normalize,
-    phash_from_luma, whash_from_luma, Config,
+    ahash_from_luma, bytes_to_chroma, compute_color_histogram, compute_combined_score,
+    dhash_from_luma, normalize, pdq_from_luma, phash_from_luma, whash_from_luma, Config,
 };
 use imgseek_store::{bytes_to_hex, BlobStore, Database, Doc};
 use serde::{Deserialize, Serialize};
 
 use crate::error::Result;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ScoreBreakdown {
-    pub phash_distance: u32,
-    pub phash_weight: f64,
-    pub whash_distance: u32,
-    pub whash_weight: f64,
-    pub dhash_distance: u32,
-    pub dhash_weight: f64,
-    pub ahash_distance: u32,
-    pub ahash_weight: f64,
-    pub chroma_distance: f64,
-    pub chroma_weight: f64,
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QueryExplanation {
@@ -107,6 +94,12 @@ impl<'a> QueryEngine<'a> {
             &norm.analysis.luma,
         );
 
+        let (q_pdq_hash, q_pdq_quality) = pdq_from_luma(
+            norm.analysis.width,
+            norm.analysis.height,
+            &norm.analysis.luma,
+        );
+
         let q_chroma = compute_color_histogram(&norm.analysis.rgb);
 
         let docs = if let Some(corpus) = &options.corpus {
@@ -116,62 +109,40 @@ impl<'a> QueryEngine<'a> {
         };
 
         let weights = &self.config.engine.weights;
-        let wp = weights.phash;
-        let ww = weights.whash;
-        let wd = weights.dhash;
-        let wa = weights.ahash;
-        let wc = weights.chroma;
-        let total_weight = wp + ww + wd + wa + wc;
 
         let mut scored_items: Vec<(f64, Doc, ScoreBreakdown)> = Vec::new();
 
         for doc in docs {
-            let phash_dist = (q_phash ^ doc.phash).count_ones();
-            let whash_dist = (q_whash ^ doc.whash).count_ones();
-            let dhash_dist = (q_dhash ^ doc.dhash).count_ones();
-            let ahash_dist = (q_ahash ^ doc.ahash).count_ones();
-
-            let chroma_dist = match self.blob_store.get(&doc.chroma_blob_ref) {
-                Ok(chroma_bytes) if chroma_bytes.len() == 256 * 4 => {
-                    let mut cand_chroma = [0f32; 256];
-                    for (i, chunk) in chroma_bytes.as_chunks::<4>().0.iter().enumerate() {
-                        cand_chroma[i] = f32::from_le_bytes(*chunk);
-                    }
-                    histogram_distance(&q_chroma, &cand_chroma) as f64
+            let cand_chroma = match self.blob_store.get(&doc.chroma_blob_ref) {
+                Ok(chroma_bytes) if chroma_bytes.len() == 1024 => {
+                    bytes_to_chroma(&chroma_bytes).ok()
                 }
-                _ => 1.0,
+                _ => None,
             };
 
-            let phash_sim = 1.0 - (phash_dist as f64 / 64.0);
-            let whash_sim = 1.0 - (whash_dist as f64 / 64.0);
-            let dhash_sim = 1.0 - (dhash_dist as f64 / 64.0);
-            let ahash_sim = 1.0 - (ahash_dist as f64 / 64.0);
-            let chroma_sim = 1.0 - chroma_dist;
+            let breakdown = compute_combined_score(
+                q_phash,
+                q_whash,
+                q_dhash,
+                q_ahash,
+                &q_pdq_hash.0,
+                q_pdq_quality,
+                &q_chroma,
+                doc.phash,
+                doc.whash,
+                doc.dhash,
+                doc.ahash,
+                &[0u8; 32],
+                0,
+                cand_chroma.as_ref(),
+                weights,
+                &self.config.engine.tau,
+            );
 
-            let score = (wp * phash_sim
-                + ww * whash_sim
-                + wd * dhash_sim
-                + wa * ahash_sim
-                + wc * chroma_sim)
-                / total_weight;
+            let score = breakdown.combined_score;
 
             if score >= options.min_score {
-                scored_items.push((
-                    score,
-                    doc,
-                    ScoreBreakdown {
-                        phash_distance: phash_dist,
-                        phash_weight: wp,
-                        whash_distance: whash_dist,
-                        whash_weight: ww,
-                        dhash_distance: dhash_dist,
-                        dhash_weight: wd,
-                        ahash_distance: ahash_dist,
-                        ahash_weight: wa,
-                        chroma_distance: chroma_dist,
-                        chroma_weight: wc,
-                    },
-                ));
+                scored_items.push((score, doc, breakdown));
             }
         }
 
@@ -194,6 +165,9 @@ impl<'a> QueryEngine<'a> {
                 .unwrap_or_default();
             let title = primary_sighting.and_then(|s| s.title);
 
+            let match_status =
+                score >= self.config.engine.min_exact_score && breakdown.satisfies_tau;
+
             results.push(QueryResultItem {
                 rank: idx + 1,
                 score,
@@ -208,8 +182,8 @@ impl<'a> QueryEngine<'a> {
                     tier: 1,
                     algorithm: "perceptual_hash_ensemble".to_string(),
                     score,
-                    threshold: options.min_score,
-                    match_status: true,
+                    threshold: self.config.engine.min_exact_score,
+                    match_status,
                     breakdown,
                 },
             });

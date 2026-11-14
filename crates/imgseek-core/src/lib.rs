@@ -7,9 +7,11 @@ pub mod format;
 pub mod hash;
 pub mod normalize;
 pub mod orient;
+pub mod scoring;
 
 pub use chroma::{
-    compute_color_histogram, histogram_distance, histogram_intersection, hsv_to_bin, rgb_to_hsv,
+    bytes_to_chroma, chroma_to_bytes, compute_color_histogram, histogram_distance,
+    histogram_intersection, hsv_to_bin, rgb_to_hsv,
 };
 pub use composite::composite_onto_white;
 pub use config::Config;
@@ -23,3 +25,4 @@ pub use hash::{
 };
 pub use normalize::{normalize, rgb_to_luma_byte, AnalysisView, NormalizedImage};
 pub use orient::{apply_orientation, parse_exif_orientation, ExifOrientation};
+pub use scoring::{compute_combined_score, ScoreBreakdown};
