@@ -1,6 +1,7 @@
 pub mod compression;
 pub mod error;
 pub mod manifest;
+pub mod mih;
 pub mod segment;
 
 pub use compression::{
@@ -9,7 +10,13 @@ pub use compression::{
 };
 pub use error::{IndexError, Result};
 pub use manifest::{Manifest, SegmentDescriptor, CURRENT_FORMAT_VERSION, MANIFEST_FILENAME};
+pub use mih::{
+    ball_masks, extract_chunks_256, extract_chunks_64, generate_ball_masks, get_ball_masks,
+    sphere_masks, HashAlgoId, MihChunkTable, MihChunkTableView, MihEnsembleIndex, MihFamilyIndex,
+    BUCKET_COUNT, BUCKET_ENTRY_SIZE, CHUNK_DIRECTORY_SIZE, TOTAL_BALL_MASKS_R3,
+};
 pub use segment::{
-    DataSegmentReader, DataSegmentWriter, DocumentRecord, SegmentFooter, SegmentHeader, DATA_MAGIC,
-    FOOTER_LEN, FOOTER_MAGIC, HEADER_LEN, IDX_MAGIC, RECORD_LEN,
+    ChunkTableDescriptor, DataSegmentReader, DataSegmentWriter, DocumentRecord, IndexSegmentReader,
+    IndexSegmentWriter, SegmentFooter, SegmentHeader, DATA_MAGIC, FOOTER_LEN, FOOTER_MAGIC,
+    HEADER_LEN, IDX_MAGIC, RECORD_LEN,
 };
