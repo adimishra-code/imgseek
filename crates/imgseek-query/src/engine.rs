@@ -11,13 +11,38 @@ use serde::{Deserialize, Serialize};
 use crate::error::Result;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AlgoVersions {
+    pub phash: u32,
+    pub whash: u32,
+    pub dhash: u32,
+    pub ahash: u32,
+    pub pdq: u32,
+    pub chroma: u32,
+}
+
+impl Default for AlgoVersions {
+    fn default() -> Self {
+        Self {
+            phash: 1,
+            whash: 1,
+            dhash: 1,
+            ahash: 1,
+            pdq: 1,
+            chroma: 1,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QueryExplanation {
     pub tier: u8,
     pub algorithm: String,
+    pub algo_versions: AlgoVersions,
     pub score: f64,
     pub threshold: f64,
     #[serde(rename = "match")]
     pub match_status: bool,
+    pub satisfies_tau: bool,
     pub breakdown: ScoreBreakdown,
 }
 
@@ -181,9 +206,11 @@ impl<'a> QueryEngine<'a> {
                 explanation: QueryExplanation {
                     tier: 1,
                     algorithm: "perceptual_hash_ensemble".to_string(),
+                    algo_versions: AlgoVersions::default(),
                     score,
                     threshold: self.config.engine.min_exact_score,
                     match_status,
+                    satisfies_tau: breakdown.satisfies_tau,
                     breakdown,
                 },
             });

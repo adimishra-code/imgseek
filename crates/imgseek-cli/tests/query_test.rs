@@ -62,6 +62,7 @@ fn test_query_command_exact_match_and_json() {
         limit: 10,
         min_score: Some(0.55),
         json: true,
+        explain: true,
         corpus: None,
     };
     let results = run_query(&query_args, &config).expect("query red");
@@ -80,6 +81,9 @@ fn test_query_command_exact_match_and_json() {
     assert_eq!(explanation.tier, 1);
     assert_eq!(explanation.algorithm, "perceptual_hash_ensemble");
     assert!(explanation.match_status);
+    assert!(explanation.satisfies_tau);
+    assert_eq!(explanation.algo_versions.phash, 1);
+    assert_eq!(explanation.algo_versions.pdq, 1);
     assert_eq!(explanation.breakdown.phash_distance, 0);
     assert_eq!(explanation.breakdown.whash_distance, 0);
     assert_eq!(explanation.breakdown.dhash_distance, 0);
@@ -92,6 +96,7 @@ fn test_query_command_exact_match_and_json() {
         limit: 5,
         min_score: Some(0.55),
         json: false,
+        explain: false,
         corpus: None,
     };
     let blue_results = run_query(&query_blue, &config).expect("query blue");
@@ -110,6 +115,7 @@ fn test_query_command_exact_match_and_json() {
         limit: 5,
         min_score: Some(0.95),
         json: false,
+        explain: false,
         corpus: None,
     };
     let yellow_results = run_query(&query_yellow, &config).expect("query yellow high threshold");

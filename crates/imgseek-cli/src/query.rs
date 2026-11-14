@@ -23,6 +23,10 @@ pub struct QueryArgs {
     #[arg(long, default_value_t = false)]
     pub json: bool,
 
+    /// Print detailed explanation of match decision and algorithm metrics
+    #[arg(long, default_value_t = false)]
+    pub explain: bool,
+
     /// Restrict query to a named corpus
     #[arg(long)]
     pub corpus: Option<String>,
@@ -58,13 +62,13 @@ pub fn run_query(args: &QueryArgs, config: &Config) -> anyhow::Result<Vec<QueryR
         let json = serde_json::to_string_pretty(&results)?;
         println!("{json}");
     } else {
-        print_results_table(&results, elapsed, min_score);
+        print_results_table(&results, elapsed, min_score, args.explain);
     }
 
     Ok(results)
 }
 
-fn print_results_table(results: &[QueryResultItem], elapsed: f64, threshold: f64) {
+fn print_results_table(results: &[QueryResultItem], elapsed: f64, threshold: f64, explain: bool) {
     if results.is_empty() {
         println!(
             "No matches found (threshold: {:.3}) in {:.3}s.",
@@ -89,6 +93,51 @@ fn print_results_table(results: &[QueryResultItem], elapsed: f64, threshold: f64
             "{:<4} | {:<6.4} | {:<6} | {:<10} | {:<30} | {}",
             r.rank, r.score, r.format, dims, title, r.origin_uri
         );
+
+        if explain {
+            let exp = &r.explanation;
+            let bd = &exp.breakdown;
+            println!(
+                "       | Match Status: {} (Threshold: {:.3})",
+                if exp.match_status {
+                    "MATCH"
+                } else {
+                    "BELOW_THRESHOLD"
+                },
+                exp.threshold
+            );
+            println!("       | Algorithm: {} (Tier {})", exp.algorithm, exp.tier);
+            println!(
+                "       |   pHash:  dist {:>2}/64  sim: {:>5.3}  wt: {:>4.2}",
+                bd.phash_distance, bd.phash_similarity, bd.phash_weight
+            );
+            println!(
+                "       |   wHash:  dist {:>2}/64  sim: {:>5.3}  wt: {:>4.2}",
+                bd.whash_distance, bd.whash_similarity, bd.whash_weight
+            );
+            println!(
+                "       |   dHash:  dist {:>2}/64  sim: {:>5.3}  wt: {:>4.2}",
+                bd.dhash_distance, bd.dhash_similarity, bd.dhash_weight
+            );
+            println!(
+                "       |   aHash:  dist {:>2}/64  sim: {:>5.3}  wt: {:>4.2}",
+                bd.ahash_distance, bd.ahash_similarity, bd.ahash_weight
+            );
+            println!(
+                "       |   PDQ:    dist {:>2}/256 sim: {:>5.3}  wt: {:>4.2}  (quality: {})",
+                bd.pdq_distance, bd.pdq_similarity, bd.pdq_weight, bd.pdq_effective_quality
+            );
+            println!(
+                "       |   Chroma: dist {:>5.3}   sim: {:>5.3}  wt: {:>4.2}",
+                bd.chroma_distance, bd.chroma_similarity, bd.chroma_weight
+            );
+            println!(
+                "       |   Satisfies Tau: {} | Combined Score: {:.4}",
+                if bd.satisfies_tau { "YES" } else { "NO" },
+                bd.combined_score
+            );
+            println!("       +--------------------------------------------------");
+        }
     }
 
     println!("\nFound {} match(es) in {:.3}s.", results.len(), elapsed);

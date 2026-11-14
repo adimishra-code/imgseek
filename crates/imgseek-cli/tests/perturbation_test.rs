@@ -247,6 +247,7 @@ fn test_query_perturbations_rank_one() {
                 limit: 5,
                 min_score: Some(0.0),
                 json: false,
+                explain: false,
                 corpus: None,
             };
 
