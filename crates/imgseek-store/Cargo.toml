@@ -7,4 +7,6 @@ license.workspace = true
 [dependencies]
 imgseek-core = { path = "../imgseek-core" }
 rusqlite = { workspace = true }
+sha2 = { workspace = true }
 thiserror = { workspace = true }
+zstd = { workspace = true }

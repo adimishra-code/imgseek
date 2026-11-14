@@ -15,3 +15,4 @@ CLAUDE.md
 GEMINI.md
 .cursorrules
 *.prompt
+docs/DECISIONS.md

@@ -11,6 +11,12 @@ pub enum StoreError {
     #[error("blob not found: {0}")]
     BlobNotFound(String),
 
+    #[error("blob corrupted: expected {expected}, got {actual}")]
+    BlobCorrupted { expected: String, actual: String },
+
+    #[error("invalid blob hash: {0}")]
+    InvalidBlobHash(String),
+
     #[error("schema error: {0}")]
     Schema(String),
 
