@@ -7,3 +7,6 @@ license.workspace = true
 [dependencies]
 imgseek-core = { path = "../imgseek-core" }
 thiserror = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }

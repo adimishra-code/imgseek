@@ -14,6 +14,9 @@ pub enum IndexError {
     #[error("format version mismatch: expected {expected}, found {actual}")]
     VersionMismatch { expected: u32, actual: u32 },
 
+    #[error("postings compression error: {0}")]
+    Compression(String),
+
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
 }
