@@ -3,7 +3,7 @@ use std::path::Path;
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::error::Result;
-use crate::models::{Corpus, Doc, IndexRecord, NewDoc, NewSighting, Sighting};
+use crate::models::{Corpus, Doc, IndexRecord, NewDoc, NewSighting, Sighting, SightingMetaMap};
 use crate::schema::{apply_pragmas, migrate};
 
 pub struct Database {
@@ -270,6 +270,23 @@ impl Database {
             )
             .optional()?;
         Ok(res)
+    }
+
+    pub fn get_corpus_sightings_metadata(&self, corpus_id: &str) -> Result<SightingMetaMap> {
+        let mut stmt = self.conn.prepare(
+            "SELECT origin_uri, file_size, file_mtime
+             FROM sightings WHERE corpus_id = ?1;",
+        )?;
+        let rows = stmt.query_map(params![corpus_id], |row| {
+            Ok((row.get::<_, String>(0)?, (row.get(1)?, row.get(2)?)))
+        })?;
+
+        let mut map = std::collections::HashMap::new();
+        for row in rows {
+            let (uri, meta) = row?;
+            map.insert(uri, meta);
+        }
+        Ok(map)
     }
 
     pub fn set_index_state(&self, key: &str, value: &str) -> Result<()> {

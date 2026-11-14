@@ -106,6 +106,35 @@ fn test_index_directory_end_to_end() {
         .expect("query blue sighting");
     assert!(s2.is_some(), "blue.png sighting should exist");
 
+    // Re-index unchanged directory without --force-reindex
+    imgseek_run_index_direct(&index_args, &config).expect("re-index unchanged");
+    assert_eq!(
+        db.get_all_docs().expect("get docs").len(),
+        2,
+        "Docs count should remain 2 after unchanged reindex"
+    );
+
+    // Re-index with --force-reindex
+    let mut force_args = imgseek_cli_index_args(&images_dir);
+    force_args.force_reindex = true;
+    imgseek_run_index_direct(&force_args, &config).expect("force reindex");
+    assert_eq!(
+        db.get_all_docs().expect("get docs").len(),
+        2,
+        "Docs count should remain 2 after force reindex"
+    );
+
+    // Add a new image (incremental change)
+    let img3: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::from_pixel(100, 100, Rgb([0, 255, 0]));
+    img3.save(images_dir.join("green.png"))
+        .expect("save green.png");
+    imgseek_run_index_direct(&index_args, &config).expect("incremental index");
+    assert_eq!(
+        db.get_all_docs().expect("get docs").len(),
+        3,
+        "Docs count should be 3 after incremental addition"
+    );
+
     let _ = std::fs::remove_dir_all(&temp_root);
 }
 

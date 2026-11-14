@@ -106,8 +106,39 @@ pub fn run_index(args: &IndexArgs, config: &Config) -> anyhow::Result<()> {
         created_at: now,
     })?;
 
+    let existing_metadata = db.get_corpus_sightings_metadata(&corpus_name)?;
     let file_paths = collect_files(args)?;
     let total_candidates = file_paths.len();
+
+    let mut files_to_process = Vec::new();
+    let mut skipped_unchanged = 0usize;
+
+    for path in file_paths {
+        if !args.force_reindex {
+            let origin_uri = path.to_string_lossy().to_string();
+            if let Some(&(Some(stored_size), Some(stored_mtime))) =
+                existing_metadata.get(&origin_uri)
+            {
+                if let Ok(metadata) = std::fs::metadata(&path) {
+                    let file_size = metadata.len() as i64;
+                    let file_mtime = metadata
+                        .modified()
+                        .ok()
+                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map(|d| d.as_secs() as i64)
+                        .unwrap_or(0);
+                    if file_size == stored_size && file_mtime == stored_mtime {
+                        skipped_unchanged += 1;
+                        if args.verbose {
+                            println!("Skipped {}: unchanged", path.display());
+                        }
+                        continue;
+                    }
+                }
+            }
+        }
+        files_to_process.push(path);
+    }
 
     let pool = if let Some(workers) = args.workers {
         rayon::ThreadPoolBuilder::new()
@@ -118,7 +149,7 @@ pub fn run_index(args: &IndexArgs, config: &Config) -> anyhow::Result<()> {
     };
 
     let processed: Vec<ProcessResult> = pool.install(|| {
-        file_paths
+        files_to_process
             .par_iter()
             .map(|path| process_file(path, config, args.verbose))
             .collect()
@@ -186,10 +217,11 @@ pub fn run_index(args: &IndexArgs, config: &Config) -> anyhow::Result<()> {
     } else {
         indexed_count as f64
     };
+    let total_skipped = skipped_unchanged + skipped_count;
 
     println!(
-        "Indexed {} images (found: {}, skipped: {}, failed: {}) in {:.2}s ({:.1} images/s).",
-        indexed_count, total_candidates, skipped_count, failed_count, elapsed, throughput
+        "Indexed {} images (found: {}, skipped: {} [{} unchanged], failed: {}) in {:.2}s ({:.1} images/s).",
+        indexed_count, total_candidates, total_skipped, skipped_unchanged, failed_count, elapsed, throughput
     );
 
     Ok(())

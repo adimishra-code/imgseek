@@ -87,3 +87,5 @@ pub struct IndexRecord {
     pub file_size: Option<i64>,
     pub file_mtime: Option<i64>,
 }
+
+pub type SightingMetaMap = std::collections::HashMap<String, (Option<i64>, Option<i64>)>;
