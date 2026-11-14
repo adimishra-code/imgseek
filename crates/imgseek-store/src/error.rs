@@ -6,10 +6,13 @@ pub enum StoreError {
     Core(#[from] imgseek_core::CoreError),
 
     #[error("database error: {0}")]
-    Database(String),
+    Database(#[from] rusqlite::Error),
 
     #[error("blob not found: {0}")]
     BlobNotFound(String),
+
+    #[error("schema error: {0}")]
+    Schema(String),
 
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
