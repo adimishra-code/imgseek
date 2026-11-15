@@ -3,6 +3,7 @@ pub mod downloads;
 pub mod error;
 pub mod fake_profile;
 pub mod history;
+pub mod simple_cache;
 pub mod snapshot;
 
 pub use discovery::{default_user_data_dir, find_all_profiles, find_profile, ChromeProfile};
@@ -15,5 +16,10 @@ pub use history::{
     unix_secs_to_webkit, webkit_to_unix_secs, ChromeDownload, ChromeDownloadUrlChain,
     ChromeHistoryData, ChromeSearchTerm, ChromeUrl, ChromeVisit, HistoryReader,
     WEBKIT_EPOCH_DIFF_SECS,
+};
+pub use simple_cache::{
+    parse_cache_entry_bytes, parse_cache_entry_file, RawCacheEntry, SimpleFileEOF,
+    SimpleFileHeader, EOF_RECORD_SIZE, FLAG_HAS_CRC32, FLAG_HAS_KEY_SHA256, HEADER_SIZE,
+    SIMPLE_FINAL_MAGIC, SIMPLE_INITIAL_MAGIC,
 };
 pub use snapshot::HistorySnapshot;
