@@ -5,6 +5,12 @@ pub enum ChromeError {
     #[error("core error: {0}")]
     Core(#[from] imgseek_core::CoreError),
 
+    #[error("store error: {0}")]
+    Store(#[from] imgseek_store::StoreError),
+
+    #[error("index error: {0}")]
+    Index(#[from] imgseek_index::IndexError),
+
     #[error("Chrome profile not found: {0}")]
     ProfileNotFound(String),
 

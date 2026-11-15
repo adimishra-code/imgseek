@@ -1,9 +1,13 @@
 pub mod discovery;
+pub mod downloads;
 pub mod error;
 pub mod history;
 pub mod snapshot;
 
 pub use discovery::{default_user_data_dir, find_all_profiles, find_profile, ChromeProfile};
+pub use downloads::{
+    ingest_downloaded_images, is_image_download, matches_exclude_patterns, DownloadIngestStats,
+};
 pub use error::{ChromeError, Result};
 pub use history::{
     unix_secs_to_webkit, webkit_to_unix_secs, ChromeDownload, ChromeDownloadUrlChain,

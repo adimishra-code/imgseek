@@ -478,6 +478,7 @@ name = "imgseek-chrome"
 version = "0.1.0"
 dependencies = [
  "imgseek-core",
+ "imgseek-index",
  "imgseek-store",
  "rusqlite",
  "serde",
