@@ -477,11 +477,13 @@ dependencies = [
 name = "imgseek-chrome"
 version = "0.1.0"
 dependencies = [
+ "crc32fast",
  "imgseek-core",
  "imgseek-index",
  "imgseek-store",
  "rusqlite",
  "serde",
+ "serde_json",
  "thiserror",
 ]
 
