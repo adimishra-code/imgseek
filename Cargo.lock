@@ -464,6 +464,7 @@ dependencies = [
  "anyhow",
  "clap",
  "image",
+ "imgseek-chrome",
  "imgseek-core",
  "imgseek-index",
  "imgseek-query",

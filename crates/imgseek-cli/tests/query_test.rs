@@ -45,6 +45,7 @@ fn test_query_command_exact_match_and_json() {
 
     // Index the directory
     let index_args = IndexArgs {
+        subcommand: None,
         paths: vec![images_dir.clone()],
         corpus: Some("local:test".to_string()),
         recursive: false,

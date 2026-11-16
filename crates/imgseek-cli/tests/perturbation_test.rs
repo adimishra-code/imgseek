@@ -171,6 +171,7 @@ fn test_query_perturbations_rank_one() {
     config.index.blob_dir = blob_dir;
 
     let index_args = IndexArgs {
+        subcommand: None,
         paths: vec![images_dir.clone()],
         corpus: Some("local:test".to_string()),
         recursive: false,

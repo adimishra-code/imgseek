@@ -17,6 +17,7 @@ imgseek-core = { path = "../imgseek-core" }
 imgseek-store = { path = "../imgseek-store" }
 imgseek-query = { path = "../imgseek-query" }
 imgseek-index = { path = "../imgseek-index" }
+imgseek-chrome = { path = "../imgseek-chrome" }
 clap = { workspace = true }
 anyhow = { workspace = true }
 rayon = { workspace = true }

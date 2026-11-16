@@ -140,6 +140,7 @@ fn test_index_directory_end_to_end() {
 
 fn imgseek_cli_index_args(path: &std::path::Path) -> imgseek::IndexArgs {
     imgseek::IndexArgs {
+        subcommand: None,
         paths: vec![path.to_path_buf()],
         corpus: Some("local:test_photos".to_string()),
         recursive: true,

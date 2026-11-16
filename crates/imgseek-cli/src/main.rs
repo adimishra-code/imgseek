@@ -2,7 +2,8 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 use imgseek::{
-    run_compact, run_index, run_query, run_verify, CompactArgs, IndexArgs, QueryArgs, VerifyArgs,
+    run_chrome_index, run_chrome_report, run_compact, run_index, run_query, run_verify,
+    ChromeIndexArgs, ChromeReportArgs, CompactArgs, IndexArgs, QueryArgs, VerifyArgs,
 };
 use imgseek_core::Config;
 
@@ -21,8 +22,14 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Index local directories or images
+    /// Index local directories, images, or browser data
     Index(IndexArgs),
+
+    /// Manage and inspect Chrome browser corpus
+    Chrome {
+        #[command(subcommand)]
+        action: ChromeAction,
+    },
 
     /// Query the index with an image
     Query(QueryArgs),
@@ -38,6 +45,15 @@ enum Commands {
         #[command(subcommand)]
         action: ConfigAction,
     },
+}
+
+#[derive(Subcommand)]
+enum ChromeAction {
+    /// Ingest from Google Chrome history, downloads, and disk cache
+    Index(ChromeIndexArgs),
+
+    /// Display statistics and report on indexed Chrome browsing data
+    Report(ChromeReportArgs),
 }
 
 #[derive(Subcommand)]
@@ -58,6 +74,14 @@ fn main() -> anyhow::Result<()> {
         Commands::Index(args) => {
             run_index(&args, &config)?;
         }
+        Commands::Chrome { action } => match action {
+            ChromeAction::Index(args) => {
+                run_chrome_index(&args, &config)?;
+            }
+            ChromeAction::Report(args) => {
+                run_chrome_report(&args, &config)?;
+            }
+        },
         Commands::Query(args) => {
             run_query(&args, &config)?;
         }

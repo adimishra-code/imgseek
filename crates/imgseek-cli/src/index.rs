@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use clap::Args;
+use clap::{Args, Subcommand};
 use imgseek_core::{
     ahash_from_luma, compute_color_histogram, dhash_from_luma, normalize, pdq_from_luma,
     phash_from_luma, sniff_format, whash_from_luma, Config,
@@ -14,10 +14,21 @@ use imgseek_store::{compute_sha256, BlobStore, Corpus, Database, IndexRecord};
 use rayon::prelude::*;
 use walkdir::WalkDir;
 
+use crate::chrome::{run_chrome_index, ChromeIndexArgs};
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum IndexSubcommand {
+    /// Ingest from Google Chrome history, downloads, and disk cache
+    Chrome(ChromeIndexArgs),
+}
+
 #[derive(Args, Debug, Clone)]
 pub struct IndexArgs {
+    #[command(subcommand)]
+    pub subcommand: Option<IndexSubcommand>,
+
     /// Paths to directories or image files to index
-    #[arg(required = true)]
+    #[arg(required_unless_present = "subcommand")]
     pub paths: Vec<PathBuf>,
 
     /// Target corpus name [default: local:<folder-name>]
@@ -75,6 +86,10 @@ struct ExtractedDoc {
 }
 
 pub fn run_index(args: &IndexArgs, config: &Config) -> anyhow::Result<()> {
+    if let Some(IndexSubcommand::Chrome(ref chrome_args)) = args.subcommand {
+        return run_chrome_index(chrome_args, config);
+    }
+
     let start_time = Instant::now();
 
     let index_dir = &config.index.dir;
