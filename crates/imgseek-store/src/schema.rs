@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS sightings (
     file_mtime  INTEGER,
     http_etag   TEXT,
     http_last_modified TEXT,
+    extra_json  TEXT,
     UNIQUE(corpus_id, origin_uri)
 );
 

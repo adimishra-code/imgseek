@@ -193,6 +193,7 @@ pub fn run_index(args: &IndexArgs, config: &Config) -> anyhow::Result<()> {
                     discovered_at: now,
                     file_size: Some(doc.file_size),
                     file_mtime: Some(doc.file_mtime),
+                    extra_json: None,
                 });
                 successful_docs.push(doc);
 

@@ -81,6 +81,7 @@ fn test_crud_and_foreign_keys() {
         file_mtime: Some(1700000000),
         http_etag: None,
         http_last_modified: None,
+        extra_json: None,
     };
     let sighting_id = db
         .insert_or_replace_sighting(&sighting)
@@ -104,6 +105,7 @@ fn test_crud_and_foreign_keys() {
         file_mtime: None,
         http_etag: None,
         http_last_modified: None,
+        extra_json: None,
     };
     assert!(db.insert_or_replace_sighting(&bad_sighting).is_err());
 }

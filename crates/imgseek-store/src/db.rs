@@ -164,7 +164,7 @@ impl Database {
         let mut stmt = self.conn.prepare(
             "SELECT sighting_id, doc_id, corpus_id, origin_uri, title,
                     discovered_at, file_size, file_mtime,
-                    http_etag, http_last_modified
+                    http_etag, http_last_modified, extra_json
              FROM sightings WHERE doc_id = ?1 ORDER BY sighting_id ASC;",
         )?;
         let rows = stmt.query_map(params![doc_id], |row| {
@@ -179,6 +179,7 @@ impl Database {
                 file_mtime: row.get(7)?,
                 http_etag: row.get(8)?,
                 http_last_modified: row.get(9)?,
+                extra_json: row.get(10)?,
             })
         })?;
         let mut sightings = Vec::new();
@@ -235,14 +236,15 @@ impl Database {
                 "INSERT INTO sightings (
                     doc_id, corpus_id, origin_uri, title,
                     discovered_at, file_size, file_mtime,
-                    http_etag, http_last_modified
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, NULL)
+                    http_etag, http_last_modified, extra_json
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, NULL, ?8)
                  ON CONFLICT(corpus_id, origin_uri) DO UPDATE SET
                     doc_id = excluded.doc_id,
                     title = excluded.title,
                     discovered_at = excluded.discovered_at,
                     file_size = excluded.file_size,
-                    file_mtime = excluded.file_mtime;",
+                    file_mtime = excluded.file_mtime,
+                    extra_json = excluded.extra_json;",
                 params![
                     doc_id,
                     rec.corpus_id,
@@ -251,6 +253,7 @@ impl Database {
                     rec.discovered_at,
                     rec.file_size,
                     rec.file_mtime,
+                    rec.extra_json,
                 ],
             )?;
             sightings_inserted += 1;
@@ -265,8 +268,8 @@ impl Database {
             "INSERT INTO sightings (
                 doc_id, corpus_id, origin_uri, title,
                 discovered_at, file_size, file_mtime,
-                http_etag, http_last_modified
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                http_etag, http_last_modified, extra_json
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
              ON CONFLICT(corpus_id, origin_uri) DO UPDATE SET
                 doc_id = excluded.doc_id,
                 title = excluded.title,
@@ -274,7 +277,8 @@ impl Database {
                 file_size = excluded.file_size,
                 file_mtime = excluded.file_mtime,
                 http_etag = excluded.http_etag,
-                http_last_modified = excluded.http_last_modified;",
+                http_last_modified = excluded.http_last_modified,
+                extra_json = excluded.extra_json;",
             params![
                 sighting.doc_id,
                 sighting.corpus_id,
@@ -285,6 +289,7 @@ impl Database {
                 sighting.file_mtime,
                 sighting.http_etag,
                 sighting.http_last_modified,
+                sighting.extra_json,
             ],
         )?;
         Ok(self.conn.last_insert_rowid())
@@ -296,7 +301,7 @@ impl Database {
             .query_row(
                 "SELECT sighting_id, doc_id, corpus_id, origin_uri, title,
                         discovered_at, file_size, file_mtime,
-                        http_etag, http_last_modified
+                        http_etag, http_last_modified, extra_json
                  FROM sightings WHERE corpus_id = ?1 AND origin_uri = ?2;",
                 params![corpus_id, origin_uri],
                 |row| {
@@ -311,6 +316,7 @@ impl Database {
                         file_mtime: row.get(7)?,
                         http_etag: row.get(8)?,
                         http_last_modified: row.get(9)?,
+                        extra_json: row.get(10)?,
                     })
                 },
             )

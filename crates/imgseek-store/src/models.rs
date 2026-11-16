@@ -51,6 +51,7 @@ pub struct Sighting {
     pub file_mtime: Option<i64>,
     pub http_etag: Option<String>,
     pub http_last_modified: Option<String>,
+    pub extra_json: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -64,6 +65,7 @@ pub struct NewSighting {
     pub file_mtime: Option<i64>,
     pub http_etag: Option<String>,
     pub http_last_modified: Option<String>,
+    pub extra_json: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -86,6 +88,7 @@ pub struct IndexRecord {
     pub discovered_at: i64,
     pub file_size: Option<i64>,
     pub file_mtime: Option<i64>,
+    pub extra_json: Option<String>,
 }
 
 pub type SightingMetaMap = std::collections::HashMap<String, (Option<i64>, Option<i64>)>;

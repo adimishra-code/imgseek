@@ -1,3 +1,4 @@
+pub mod association;
 pub mod discovery;
 pub mod downloads;
 pub mod error;
@@ -6,6 +7,10 @@ pub mod history;
 pub mod simple_cache;
 pub mod snapshot;
 
+pub use association::{
+    extract_host, ingest_cached_images, match_cache_entry_to_page, CacheIngestStats,
+    PageMatchResult,
+};
 pub use discovery::{default_user_data_dir, find_all_profiles, find_profile, ChromeProfile};
 pub use downloads::{
     ingest_downloaded_images, is_image_download, matches_exclude_patterns, DownloadIngestStats,

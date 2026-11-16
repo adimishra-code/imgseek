@@ -250,6 +250,7 @@ pub fn ingest_downloaded_images(
             discovered_at: item.download.start_time,
             file_size: Some(item.file_bytes.len() as i64),
             file_mtime: Some(item.download.start_time),
+            extra_json: None,
         });
     }
 
