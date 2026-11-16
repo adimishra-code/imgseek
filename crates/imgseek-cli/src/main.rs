@@ -2,8 +2,8 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 use imgseek::{
-    run_chrome_index, run_chrome_report, run_compact, run_index, run_query, run_verify,
-    ChromeIndexArgs, ChromeReportArgs, CompactArgs, IndexArgs, QueryArgs, VerifyArgs,
+    run_chrome_index, run_chrome_report, run_compact, run_index, run_purge, run_query, run_verify,
+    ChromeIndexArgs, ChromeReportArgs, CompactArgs, IndexArgs, PurgeArgs, QueryArgs, VerifyArgs,
 };
 use imgseek_core::Config;
 
@@ -39,6 +39,9 @@ enum Commands {
 
     /// Compact index segments and purge tombstones
     Compact(CompactArgs),
+
+    /// Purge a corpus and all its documents, sightings, and cached data
+    Purge(PurgeArgs),
 
     /// Manage configuration
     Config {
@@ -90,6 +93,9 @@ fn main() -> anyhow::Result<()> {
         }
         Commands::Compact(args) => {
             run_compact(&args, &config)?;
+        }
+        Commands::Purge(args) => {
+            run_purge(&args, &config)?;
         }
         Commands::Config { action } => match action {
             ConfigAction::Init { path } => {

@@ -92,3 +92,12 @@ pub struct IndexRecord {
 }
 
 pub type SightingMetaMap = std::collections::HashMap<String, (Option<i64>, Option<i64>)>;
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PurgeReport {
+    pub corpus_id: String,
+    pub sightings_deleted: usize,
+    pub docs_deleted: usize,
+    pub orphaned_doc_ids: Vec<i64>,
+    pub orphaned_blob_refs: Vec<String>,
+}

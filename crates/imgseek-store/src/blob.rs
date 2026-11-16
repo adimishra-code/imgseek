@@ -109,6 +109,16 @@ impl BlobStore {
         }
     }
 
+    pub fn delete(&self, hash_hex: &str) -> Result<bool> {
+        let path = self.blob_path(hash_hex)?;
+        if path.is_file() {
+            std::fs::remove_file(&path)?;
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
     pub fn blob_path(&self, hash_hex: &str) -> Result<PathBuf> {
         validate_hash_hex(hash_hex)?;
         let lower = hash_hex.to_ascii_lowercase();

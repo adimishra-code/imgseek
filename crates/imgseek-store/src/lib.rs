@@ -7,4 +7,6 @@ pub mod schema;
 pub use blob::{bytes_to_hex, compute_sha256, BlobStore};
 pub use db::Database;
 pub use error::{Result, StoreError};
-pub use models::{Corpus, Doc, IndexRecord, NewDoc, NewSighting, Sighting, SightingMetaMap};
+pub use models::{
+    Corpus, Doc, IndexRecord, NewDoc, NewSighting, PurgeReport, Sighting, SightingMetaMap,
+};

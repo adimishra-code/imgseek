@@ -3,7 +3,9 @@ use std::path::Path;
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::error::Result;
-use crate::models::{Corpus, Doc, IndexRecord, NewDoc, NewSighting, Sighting, SightingMetaMap};
+use crate::models::{
+    Corpus, Doc, IndexRecord, NewDoc, NewSighting, PurgeReport, Sighting, SightingMetaMap,
+};
 use crate::schema::{apply_pragmas, migrate};
 
 pub struct Database {
@@ -361,6 +363,76 @@ impl Database {
             )
             .optional()?;
         Ok(res)
+    }
+
+    pub fn purge_corpus(&mut self, corpus_id: &str) -> Result<PurgeReport> {
+        let tx = self.conn.transaction()?;
+
+        let mut stmt = tx.prepare("SELECT DISTINCT doc_id FROM sightings WHERE corpus_id = ?1;")?;
+        let doc_ids_in_corpus: Vec<i64> = stmt
+            .query_map(params![corpus_id], |row| row.get(0))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        drop(stmt);
+
+        let sightings_count: usize = tx.query_row(
+            "SELECT COUNT(*) FROM sightings WHERE corpus_id = ?1;",
+            params![corpus_id],
+            |r| r.get(0),
+        )?;
+
+        tx.execute(
+            "DELETE FROM sightings WHERE corpus_id = ?1;",
+            params![corpus_id],
+        )?;
+
+        let mut orphaned_doc_ids = Vec::new();
+        let mut orphaned_blob_refs = Vec::new();
+
+        for doc_id in doc_ids_in_corpus {
+            let remaining: usize = tx.query_row(
+                "SELECT COUNT(*) FROM sightings WHERE doc_id = ?1;",
+                params![doc_id],
+                |r| r.get(0),
+            )?;
+            if remaining == 0 {
+                orphaned_doc_ids.push(doc_id);
+                let blob_ref: Option<String> = tx
+                    .query_row(
+                        "SELECT chroma_blob_ref FROM docs WHERE doc_id = ?1;",
+                        params![doc_id],
+                        |r| r.get(0),
+                    )
+                    .optional()?;
+                if let Some(b) = blob_ref {
+                    orphaned_blob_refs.push(b);
+                }
+            }
+        }
+
+        let mut docs_deleted = 0;
+        for &doc_id in &orphaned_doc_ids {
+            docs_deleted += tx.execute("DELETE FROM docs WHERE doc_id = ?1;", params![doc_id])?;
+        }
+
+        tx.execute(
+            "DELETE FROM corpora WHERE corpus_id = ?1;",
+            params![corpus_id],
+        )?;
+
+        tx.commit()?;
+
+        Ok(PurgeReport {
+            corpus_id: corpus_id.to_string(),
+            sightings_deleted: sightings_count,
+            docs_deleted,
+            orphaned_doc_ids,
+            orphaned_blob_refs,
+        })
+    }
+
+    pub fn vacuum(&self) -> Result<()> {
+        self.conn.execute_batch("VACUUM;")?;
+        Ok(())
     }
 
     fn row_to_doc(row: &rusqlite::Row) -> rusqlite::Result<Doc> {
