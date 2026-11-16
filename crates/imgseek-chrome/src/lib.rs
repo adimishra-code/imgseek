@@ -18,8 +18,9 @@ pub use history::{
     WEBKIT_EPOCH_DIFF_SECS,
 };
 pub use simple_cache::{
-    parse_cache_entry_bytes, parse_cache_entry_file, RawCacheEntry, SimpleFileEOF,
-    SimpleFileHeader, EOF_RECORD_SIZE, FLAG_HAS_CRC32, FLAG_HAS_KEY_SHA256, HEADER_SIZE,
-    SIMPLE_FINAL_MAGIC, SIMPLE_INITIAL_MAGIC,
+    parse_cache_entry_bytes, parse_cache_entry_file, parse_cache_item, parse_cache_key,
+    parse_http_date, parse_http_headers, HttpHeaderInfo, ParsedCacheItem, RawCacheEntry,
+    SimpleFileEOF, SimpleFileHeader, EOF_RECORD_SIZE, FLAG_HAS_CRC32, FLAG_HAS_KEY_SHA256,
+    HEADER_SIZE, SIMPLE_FINAL_MAGIC, SIMPLE_INITIAL_MAGIC,
 };
 pub use snapshot::HistorySnapshot;

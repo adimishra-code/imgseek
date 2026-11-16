@@ -208,6 +208,210 @@ pub fn parse_cache_entry_file(path: &Path) -> Result<RawCacheEntry> {
     parse_cache_entry_bytes(&bytes)
 }
 
+/// Parsed HTTP header values relevant for cache indexing and timestamps.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct HttpHeaderInfo {
+    pub content_type: Option<String>,
+    pub date_str: Option<String>,
+    pub date_timestamp: Option<i64>,
+    pub last_modified_str: Option<String>,
+    pub last_modified_timestamp: Option<i64>,
+}
+
+/// Fully parsed and interpreted Chromium Simple Cache entry.
+#[derive(Debug, Clone)]
+pub struct ParsedCacheItem {
+    pub raw_key: String,
+    pub resource_url: String,
+    pub top_frame_site: Option<String>,
+    pub headers: HttpHeaderInfo,
+    pub image_format: Option<String>,
+    pub payload: Vec<u8>,
+}
+
+fn days_from_civil(y: i64, m: u32, d: u32) -> i64 {
+    let y = y - if m <= 2 { 1 } else { 0 };
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = (y - era * 400) as u32;
+    let mp = (m + if m > 2 { 0 } else { 12 }) as i64;
+    let doy = (153 * (mp - 3) + 2) / 5 + d as i64 - 1;
+    let doe = yoe as i64 * 365 + yoe as i64 / 4 - yoe as i64 / 100 + doy;
+    era * 146097 + doe - 719468
+}
+
+fn month_from_str(s: &str) -> Option<u32> {
+    match s.to_ascii_lowercase().as_str() {
+        "jan" => Some(1),
+        "feb" => Some(2),
+        "mar" => Some(3),
+        "apr" => Some(4),
+        "may" => Some(5),
+        "jun" => Some(6),
+        "jul" => Some(7),
+        "aug" => Some(8),
+        "sep" => Some(9),
+        "oct" => Some(10),
+        "nov" => Some(11),
+        "dec" => Some(12),
+        _ => None,
+    }
+}
+
+/// Leniently parses an RFC 1123 / RFC 850 / asctime HTTP date string into Unix epoch seconds.
+pub fn parse_http_date(s: &str) -> Option<i64> {
+    let clean = s.trim();
+    let parts: Vec<&str> = clean
+        .split(|c: char| c.is_whitespace() || c == ',' || c == '-')
+        .filter(|p| !p.is_empty())
+        .collect();
+
+    let mut month_idx = None;
+    for (i, part) in parts.iter().enumerate() {
+        if month_from_str(part).is_some() {
+            month_idx = Some(i);
+            break;
+        }
+    }
+
+    let m_idx = month_idx?;
+    let month = month_from_str(parts[m_idx])?;
+
+    let (day, year, time_str) =
+        if m_idx > 0 && m_idx + 2 < parts.len() && parts[m_idx + 2].contains(':') {
+            let day: u32 = parts[m_idx - 1].parse().ok()?;
+            let mut year: i64 = parts[m_idx + 1].parse().ok()?;
+            if year < 100 {
+                year += if year < 70 { 2000 } else { 1900 };
+            }
+            (day, year, parts[m_idx + 2])
+        } else if m_idx + 3 < parts.len() && parts[m_idx + 2].contains(':') {
+            let day: u32 = parts[m_idx + 1].parse().ok()?;
+            let time_str = parts[m_idx + 2];
+            let year: i64 = parts[m_idx + 3].parse().ok()?;
+            (day, year, time_str)
+        } else {
+            return None;
+        };
+
+    let time_parts: Vec<&str> = time_str.split(':').collect();
+    if time_parts.len() != 3 {
+        return None;
+    }
+    let hour: u32 = time_parts[0].parse().ok()?;
+    let min: u32 = time_parts[1].parse().ok()?;
+    let sec: u32 = time_parts[2].parse().ok()?;
+
+    if day == 0 || day > 31 || hour > 23 || min > 59 || sec > 60 {
+        return None;
+    }
+
+    let days = days_from_civil(year, month, day);
+    let total_secs = days * 86400 + hour as i64 * 3600 + min as i64 * 60 + sec as i64;
+    Some(total_secs)
+}
+
+/// Parses a cache key (simple or modern partitioned key) into `(resource_url, top_frame_site)`.
+pub fn parse_cache_key(key: &str) -> (String, Option<String>) {
+    let tokens: Vec<&str> = key.split_whitespace().collect();
+    if tokens.is_empty() {
+        return (String::new(), None);
+    }
+
+    if tokens.len() == 1 {
+        let single = tokens[0];
+        let cleaned = if let Some(stripped) = single.strip_prefix("1/0/") {
+            stripped
+        } else if let Some(stripped) = single.strip_prefix("0/0/") {
+            stripped
+        } else if let Some(stripped) = single.strip_prefix("2/0/") {
+            stripped
+        } else {
+            single
+        };
+        (cleaned.to_string(), None)
+    } else {
+        let resource_url = tokens[tokens.len() - 1].to_string();
+        let mut top_frame_site = None;
+
+        for &tok in &tokens[..tokens.len() - 1] {
+            if let Some(pos) = tok.find("_dk_") {
+                let site = &tok[pos + 4..];
+                if !site.is_empty() {
+                    top_frame_site = Some(site.trim_end_matches('/').to_string());
+                    break;
+                }
+            } else if tok.starts_with("http://") || tok.starts_with("https://") {
+                top_frame_site = Some(tok.trim_end_matches('/').to_string());
+                break;
+            }
+        }
+
+        (resource_url, top_frame_site)
+    }
+}
+
+/// Leniently extracts headers from HTTP stream 0 bytes (NUL or CRLF delimited).
+pub fn parse_http_headers(bytes: &[u8]) -> HttpHeaderInfo {
+    let mut info = HttpHeaderInfo::default();
+    let text = String::from_utf8_lossy(bytes);
+
+    let raw_lines: Vec<&str> = text
+        .split(['\0', '\r', '\n'])
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    for line in raw_lines {
+        if let Some((k, v)) = line.split_once(':') {
+            let k_lower = k.trim().to_ascii_lowercase();
+            let v_trim = v.trim();
+            match k_lower.as_str() {
+                "content-type" => {
+                    info.content_type = Some(v_trim.to_string());
+                }
+                "date" => {
+                    info.date_str = Some(v_trim.to_string());
+                    info.date_timestamp = parse_http_date(v_trim);
+                }
+                "last-modified" => {
+                    info.last_modified_str = Some(v_trim.to_string());
+                    info.last_modified_timestamp = parse_http_date(v_trim);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    info
+}
+
+/// Converts a raw cache entry into a structured `ParsedCacheItem` with format sniffing.
+pub fn parse_cache_item(raw: &RawCacheEntry) -> ParsedCacheItem {
+    let (resource_url, top_frame_site) = parse_cache_key(&raw.key);
+    let headers = parse_http_headers(&raw.stream0_headers);
+
+    let is_gzip = raw.stream1_payload.len() >= 2
+        && raw.stream1_payload[0] == 0x1f
+        && raw.stream1_payload[1] == 0x8b;
+
+    let image_format = if is_gzip {
+        None
+    } else {
+        imgseek_core::sniff_format(&raw.stream1_payload)
+            .ok()
+            .map(|f| format!("{:?}", f).to_lowercase())
+    };
+
+    ParsedCacheItem {
+        raw_key: raw.key.clone(),
+        resource_url,
+        top_frame_site,
+        headers,
+        image_format,
+        payload: raw.stream1_payload.clone(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -225,18 +429,63 @@ mod tests {
         fs::create_dir_all(&tmp).unwrap();
 
         let profile = FakeChromeProfile::create(&tmp, "Default").unwrap();
-        let key = "https://example.com/images/test.jpg";
-        let body = b"test-image-content-bytes-12345";
+        let key =
+            "_dk_https://example.com https://example.com https://cdn.example.com/images/test.bmp";
+        // 2x2 BMP
+        let body: [u8; 70] = [
+            0x42, 0x4d, 70, 0, 0, 0, 0, 0, 0, 0, 54, 0, 0, 0, 40, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0,
+            1, 0, 24, 0, 0, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            255, 0, 0, 0, 255, 0, 0, 0, 0, 0, 255, 255, 255, 0, 0, 0,
+        ];
         let path = profile
-            .add_cache_entry(key, body, Some("image/jpeg"), None)
+            .add_cache_entry(
+                key,
+                &body,
+                Some("image/bmp"),
+                Some("Sun, 15 Nov 2026 12:00:00 GMT"),
+            )
             .unwrap();
 
-        let parsed = parse_cache_entry_file(&path).unwrap();
-        assert_eq!(parsed.key, key);
-        assert_eq!(parsed.stream1_payload, body);
-        assert!(!parsed.stream0_headers.is_empty());
+        let raw = parse_cache_entry_file(&path).unwrap();
+        assert_eq!(raw.key, key);
+        assert_eq!(raw.stream1_payload, body);
+
+        let item = parse_cache_item(&raw);
+        assert_eq!(item.resource_url, "https://cdn.example.com/images/test.bmp");
+        assert_eq!(item.top_frame_site.as_deref(), Some("https://example.com"));
+        assert_eq!(item.headers.content_type.as_deref(), Some("image/bmp"));
+        assert!(item.headers.date_timestamp.is_some());
+        assert_eq!(item.image_format.as_deref(), Some("bmp"));
 
         let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_parse_http_date() {
+        let ts = parse_http_date("Sun, 15 Nov 2026 12:00:00 GMT").unwrap();
+        assert!(ts > 1_700_000_000);
+
+        let ts2 = parse_http_date("Sunday, 06-Nov-94 08:49:37 GMT").unwrap();
+        assert_eq!(ts2, 784111777);
+
+        assert!(parse_http_date("invalid date string").is_none());
+    }
+
+    #[test]
+    fn test_parse_cache_key() {
+        let (res1, top1) = parse_cache_key("https://example.com/photo.jpg");
+        assert_eq!(res1, "https://example.com/photo.jpg");
+        assert_eq!(top1, None);
+
+        let (res2, top2) = parse_cache_key("1/0/https://example.com/photo.jpg");
+        assert_eq!(res2, "https://example.com/photo.jpg");
+        assert_eq!(top2, None);
+
+        let (res3, top3) = parse_cache_key(
+            "1/0/_dk_https://site.org https://site.org https://static.site.org/cat.png",
+        );
+        assert_eq!(res3, "https://static.site.org/cat.png");
+        assert_eq!(top3.as_deref(), Some("https://site.org"));
     }
 
     #[test]
