@@ -482,6 +482,7 @@ dependencies = [
  "imgseek-core",
  "imgseek-index",
  "imgseek-store",
+ "proptest",
  "rusqlite",
  "serde",
  "serde_json",
